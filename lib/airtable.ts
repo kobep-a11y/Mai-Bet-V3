@@ -5,32 +5,24 @@ import type {
   StrategyTrigger,
   Signal,
   HistoricalGame,
-  AirtableRecord,
   AirtableStrategyFields,
   AirtableTriggerFields,
   AirtableSignalFields,
   AirtableHistoricalGameFields,
-  SignalStatus,
 } from '@/types';
 
-// Initialize Airtable
 const airtable = new Airtable({
   apiKey: process.env.AIRTABLE_API_KEY,
 });
 
 const base = airtable.base(process.env.AIRTABLE_BASE_ID || '');
 
-// Table names (user will create these)
 const TABLES = {
   STRATEGIES: 'Strategies',
   TRIGGERS: 'Triggers',
   SIGNALS: 'Signals',
   HISTORICAL_GAMES: 'Historical Games',
 };
-
-// ============================================
-// Strategy Functions
-// ============================================
 
 export async function getStrategies(): Promise<Strategy[]> {
   try {
@@ -41,7 +33,7 @@ export async function getStrategies(): Promise<Strategy[]> {
     const strategies: Strategy[] = [];
 
     for (const record of records) {
-      const fields = record.fields as AirtableStrategyFields;
+      const fields = record.fields as unknown as AirtableStrategyFields;
       const triggers = await getTriggersByStrategy(record.id);
 
       strategies.push({
@@ -51,7 +43,7 @@ export async function getStrategies(): Promise<Strategy[]> {
         trigger_mode: fields['Trigger Mode'] || 'sequential',
         is_active: fields['Is Active'] ?? true,
         triggers,
-        created_at: record._rawJson?.createdTime || new Date().toISOString(),
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
     }
@@ -66,7 +58,7 @@ export async function getStrategies(): Promise<Strategy[]> {
 export async function getStrategyById(id: string): Promise<Strategy | null> {
   try {
     const record = await base(TABLES.STRATEGIES).find(id);
-    const fields = record.fields as AirtableStrategyFields;
+    const fields = record.fields as unknown as AirtableStrategyFields;
     const triggers = await getTriggersByStrategy(id);
 
     return {
@@ -76,7 +68,7 @@ export async function getStrategyById(id: string): Promise<Strategy | null> {
       trigger_mode: fields['Trigger Mode'] || 'sequential',
       is_active: fields['Is Active'] ?? true,
       triggers,
-      created_at: record._rawJson?.createdTime || new Date().toISOString(),
+      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
   } catch (error) {
@@ -84,10 +76,6 @@ export async function getStrategyById(id: string): Promise<Strategy | null> {
     return null;
   }
 }
-
-// ============================================
-// Trigger Functions
-// ============================================
 
 export async function getTriggersByStrategy(strategyId: string): Promise<StrategyTrigger[]> {
   try {
@@ -99,7 +87,7 @@ export async function getTriggersByStrategy(strategyId: string): Promise<Strateg
       .all();
 
     return records.map((record) => {
-      const fields = record.fields as AirtableTriggerFields;
+      const fields = record.fields as unknown as AirtableTriggerFields;
       return {
         id: record.id,
         strategy_id: strategyId,
@@ -125,10 +113,6 @@ function parseConditions(jsonString: string | undefined): any[] {
     return [];
   }
 }
-
-// ============================================
-// Signal Functions
-// ============================================
 
 export async function createSignal(signal: Omit<Signal, 'id' | 'created_at' | 'updated_at'>): Promise<Signal | null> {
   try {
@@ -162,7 +146,6 @@ export async function createSignal(signal: Omit<Signal, 'id' | 'created_at' | 'u
 export async function updateSignal(id: string, updates: Partial<Signal>): Promise<boolean> {
   try {
     const fields: Record<string, any> = {};
-
     if (updates.status) fields['Status'] = updates.status;
     if (updates.result) fields['Result'] = updates.result;
     if (updates.close_quarter) fields['Close Quarter'] = updates.close_quarter;
@@ -183,13 +166,11 @@ export async function updateSignal(id: string, updates: Partial<Signal>): Promis
 export async function getActiveSignals(): Promise<Signal[]> {
   try {
     const records = await base(TABLES.SIGNALS)
-      .select({
-        filterByFormula: `OR({Status} = "pending", {Status} = "active")`,
-      })
+      .select({ filterByFormula: `OR({Status} = "pending", {Status} = "active")` })
       .all();
 
     return records.map((record) => {
-      const fields = record.fields as AirtableSignalFields;
+      const fields = record.fields as unknown as AirtableSignalFields;
       return {
         id: record.id,
         game_id: fields['Game ID'] || '',
@@ -209,7 +190,7 @@ export async function getActiveSignals(): Promise<Signal[]> {
         notes: fields.Notes,
         discord_sent: fields['Discord Sent'] || false,
         sms_sent: fields['SMS Sent'] || false,
-        created_at: record._rawJson?.createdTime || new Date().toISOString(),
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
     });
@@ -223,16 +204,13 @@ export async function getSignalsByDate(startDate: string, endDate: string): Prom
   try {
     const records = await base(TABLES.SIGNALS)
       .select({
-        filterByFormula: `AND(
-          IS_AFTER({Entry Time}, "${startDate}"),
-          IS_BEFORE({Entry Time}, "${endDate}")
-        )`,
+        filterByFormula: `AND(IS_AFTER({Entry Time}, "${startDate}"), IS_BEFORE({Entry Time}, "${endDate}"))`,
         sort: [{ field: 'Entry Time', direction: 'desc' }],
       })
       .all();
 
     return records.map((record) => {
-      const fields = record.fields as AirtableSignalFields;
+      const fields = record.fields as unknown as AirtableSignalFields;
       return {
         id: record.id,
         game_id: fields['Game ID'] || '',
@@ -252,7 +230,7 @@ export async function getSignalsByDate(startDate: string, endDate: string): Prom
         notes: fields.Notes,
         discord_sent: fields['Discord Sent'] || false,
         sms_sent: fields['SMS Sent'] || false,
-        created_at: record._rawJson?.createdTime || new Date().toISOString(),
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
     });
@@ -261,10 +239,6 @@ export async function getSignalsByDate(startDate: string, endDate: string): Prom
     return [];
   }
 }
-
-// ============================================
-// Historical Games Functions
-// ============================================
 
 export async function saveHistoricalGame(game: Omit<HistoricalGame, 'id' | 'created_at'>): Promise<boolean> {
   try {
@@ -293,14 +267,11 @@ export async function saveHistoricalGame(game: Omit<HistoricalGame, 'id' | 'crea
 export async function getHistoricalGames(limit: number = 100): Promise<HistoricalGame[]> {
   try {
     const records = await base(TABLES.HISTORICAL_GAMES)
-      .select({
-        maxRecords: limit,
-        sort: [{ field: 'Game Date', direction: 'desc' }],
-      })
+      .select({ maxRecords: limit, sort: [{ field: 'Game Date', direction: 'desc' }] })
       .all();
 
     return records.map((record) => {
-      const fields = record.fields as AirtableHistoricalGameFields;
+      const fields = record.fields as unknown as AirtableHistoricalGameFields;
       return {
         id: record.id,
         event_id: fields['Event ID'] || '',
@@ -316,7 +287,7 @@ export async function getHistoricalGames(limit: number = 100): Promise<Historica
         opening_moneyline_away: fields['Opening ML Away'] || 0,
         opening_total: fields['Opening Total'] || 0,
         game_date: fields['Game Date'] || '',
-        created_at: record._rawJson?.createdTime || new Date().toISOString(),
+        created_at: new Date().toISOString(),
       };
     });
   } catch (error) {
@@ -325,13 +296,8 @@ export async function getHistoricalGames(limit: number = 100): Promise<Historica
   }
 }
 
-// ============================================
-// Health Check
-// ============================================
-
 export async function testConnection(): Promise<boolean> {
   try {
-    // Try to fetch one record from strategies to test connection
     await base(TABLES.STRATEGIES).select({ maxRecords: 1 }).firstPage();
     return true;
   } catch (error) {

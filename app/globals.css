@@ -10,93 +10,14 @@
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-    to bottom,
-    rgb(var(--background-start-rgb)),
-    rgb(var(--background-end-rgb))
-  );
+  background: linear-gradient(to bottom, rgb(var(--background-start-rgb)), rgb(var(--background-end-rgb)));
   min-height: 100vh;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.status-live {
-  @apply bg-green-500 animate-pulse;
-}
-
-.status-halftime {
-  @apply bg-yellow-500;
-}
-
-.status-finished {
-  @apply bg-gray-500;
-}
-
-.status-scheduled {
-  @apply bg-blue-500;
-}
-
 .game-card {
-  @apply transition-all duration-200;
+  transition: all 0.2s;
 }
 
 .game-card:hover {
   box-shadow: 0 10px 15px -3px rgba(139, 92, 246, 0.2);
-}
-
-.signal-active {
-  @apply border-l-4 border-purple-500;
-}
-
-.signal-won {
-  @apply border-l-4 border-green-500 bg-green-500/10;
-}
-
-.signal-lost {
-  @apply border-l-4 border-red-500 bg-red-500/10;
-}
-
-.signal-pending {
-  @apply border-l-4 border-yellow-500;
-}
-
-@keyframes pulse-soft {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-.animate-pulse-soft {
-  animation: pulse-soft 2s ease-in-out infinite;
-}
-
-@keyframes slide-in {
-  from { transform: translateX(-10px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-.animate-slide-in {
-  animation: slide-in 0.3s ease-out;
 }

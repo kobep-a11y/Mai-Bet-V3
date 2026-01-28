@@ -1,15 +1,34 @@
-import Airtable from 'airtable';
 import { Player, AirtablePlayerFields, HistoricalGame } from '@/types';
 
-// Initialize Airtable
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
-  process.env.AIRTABLE_BASE_ID || ''
-);
+// Airtable REST API configuration
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
+const TABLE_NAME = 'Players';
 
 // In-memory cache for players
 let playersCache: Map<string, Player> = new Map();
 let cacheLastUpdated: number = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Helper function to make Airtable REST API requests
+ * This avoids the AbortSignal bug in the Airtable SDK on Vercel
+ */
+async function airtableRequest(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(TABLE_NAME)}${endpoint}`;
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+}
 
 /**
  * Extract player name from team name
@@ -31,6 +50,7 @@ export function extractTeamName(fullTeamName: string): string {
 
 /**
  * Get or create a player from a team name
+ * Uses REST API directly to avoid Airtable SDK AbortSignal bug
  */
 export async function getOrCreatePlayer(fullTeamName: string): Promise<Player | null> {
   const playerName = extractPlayerName(fullTeamName);
@@ -43,52 +63,69 @@ export async function getOrCreatePlayer(fullTeamName: string): Promise<Player | 
     return playersCache.get(playerName)!;
   }
 
-  try {
-    // Try to find existing player
-    const records = await base('Players')
-      .select({
-        filterByFormula: `{Name} = '${playerName}'`,
-        maxRecords: 1,
-      })
-      .firstPage();
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    console.error('Missing Airtable credentials');
+    return null;
+  }
 
-    if (records.length > 0) {
-      const player = mapAirtableToPlayer(records[0]);
+  try {
+    // Try to find existing player via REST API
+    const searchParams = new URLSearchParams();
+    searchParams.append('filterByFormula', `{Name} = '${playerName}'`);
+    searchParams.append('maxRecords', '1');
+
+    const searchResponse = await airtableRequest(`?${searchParams.toString()}`);
+    const searchResult = await searchResponse.json();
+
+    if (searchResponse.ok && searchResult.records?.length > 0) {
+      const player = mapRecordToPlayer(searchResult.records[0]);
       playersCache.set(playerName, player);
       return player;
     }
 
-    // Create new player
+    // Create new player via REST API
     const teamName = extractTeamName(fullTeamName);
     const now = new Date().toISOString();
 
-    const newRecord = await base('Players').create({
-      Name: playerName,
-      'Team Name': teamName,
-      'Full Team Name': fullTeamName,
-      'Games Played': 0,
-      Wins: 0,
-      Losses: 0,
-      'Win Rate': 0,
-      'Total Points For': 0,
-      'Total Points Against': 0,
-      'Avg Points For': 0,
-      'Avg Points Against': 0,
-      'Avg Margin': 0,
-      'Spread Wins': 0,
-      'Spread Losses': 0,
-      'Spread Pushes': 0,
-      'Total Overs': 0,
-      'Total Unders': 0,
-      'Total Pushes': 0,
-      'ATS Win Rate': 0,
-      'Over Rate': 0,
-      'Recent Form': '[]',
-      'Is Active': true,
-    } as Partial<AirtablePlayerFields>);
+    const createResponse = await airtableRequest('', {
+      method: 'POST',
+      body: JSON.stringify({
+        fields: {
+          Name: playerName,
+          'Team Name': teamName,
+          'Full Team Name': fullTeamName,
+          'Games Played': 0,
+          Wins: 0,
+          Losses: 0,
+          'Win Rate': 0,
+          'Total Points For': 0,
+          'Total Points Against': 0,
+          'Avg Points For': 0,
+          'Avg Points Against': 0,
+          'Avg Margin': 0,
+          'Spread Wins': 0,
+          'Spread Losses': 0,
+          'Spread Pushes': 0,
+          'Total Overs': 0,
+          'Total Unders': 0,
+          'Total Pushes': 0,
+          'ATS Win Rate': 0,
+          'Over Rate': 0,
+          'Recent Form': '[]',
+          'Is Active': true,
+        },
+      }),
+    });
+
+    const createResult = await createResponse.json();
+
+    if (!createResponse.ok) {
+      console.error('❌ Error creating player:', createResult);
+      return null;
+    }
 
     const player: Player = {
-      id: newRecord.id,
+      id: createResult.id,
       name: playerName,
       teamName,
       fullTeamName,
@@ -123,6 +160,7 @@ export async function getOrCreatePlayer(fullTeamName: string): Promise<Player | 
 
 /**
  * Update player stats after a game
+ * Uses REST API directly to avoid Airtable SDK AbortSignal bug
  */
 export async function updatePlayerStats(
   playerName: string,
@@ -135,22 +173,27 @@ export async function updatePlayerStats(
     gameDate: string;
   }
 ): Promise<Player | null> {
-  try {
-    // Get current player
-    const records = await base('Players')
-      .select({
-        filterByFormula: `{Name} = '${playerName}'`,
-        maxRecords: 1,
-      })
-      .firstPage();
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    console.error('Missing Airtable credentials');
+    return null;
+  }
 
-    if (records.length === 0) {
+  try {
+    // Get current player via REST API
+    const searchParams = new URLSearchParams();
+    searchParams.append('filterByFormula', `{Name} = '${playerName}'`);
+    searchParams.append('maxRecords', '1');
+
+    const searchResponse = await airtableRequest(`?${searchParams.toString()}`);
+    const searchResult = await searchResponse.json();
+
+    if (!searchResponse.ok || !searchResult.records?.length) {
       console.log(`Player ${playerName} not found`);
       return null;
     }
 
-    const record = records[0];
-    const fields = record.fields as unknown as AirtablePlayerFields;
+    const record = searchResult.records[0];
+    const fields = record.fields as AirtablePlayerFields;
 
     // Calculate new stats
     const gamesPlayed = (fields['Games Played'] || 0) + 1;
@@ -199,30 +242,46 @@ export async function updatePlayerStats(
       }
     }
 
-    // Update in Airtable
-    await base('Players').update(record.id, {
-      'Games Played': gamesPlayed,
-      Wins: wins,
-      Losses: losses,
-      'Win Rate': Math.round(winRate * 10) / 10,
-      'Total Points For': totalPointsFor,
-      'Total Points Against': totalPointsAgainst,
-      'Avg Points For': Math.round(avgPointsFor * 10) / 10,
-      'Avg Points Against': Math.round(avgPointsAgainst * 10) / 10,
-      'Avg Margin': Math.round(avgMargin * 10) / 10,
-      'Spread Wins': spreadWins,
-      'Spread Losses': spreadLosses,
-      'Spread Pushes': spreadPushes,
-      'Total Overs': totalOvers,
-      'Total Unders': totalUnders,
-      'Total Pushes': totalPushes,
-      'ATS Win Rate': Math.round(atsWinRate * 10) / 10,
-      'Over Rate': Math.round(overRate * 10) / 10,
-      'Recent Form': JSON.stringify(recentForm),
-      'Streak Type': streakType,
-      'Streak Count': streakCount,
-      'Last Game Date': game.gameDate,
-    } as Partial<AirtablePlayerFields>);
+    // Update in Airtable via REST API (PATCH)
+    const updateUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${record.id}`;
+    const updateResponse = await fetch(updateUrl, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fields: {
+          'Games Played': gamesPlayed,
+          Wins: wins,
+          Losses: losses,
+          'Win Rate': Math.round(winRate * 10) / 10,
+          'Total Points For': totalPointsFor,
+          'Total Points Against': totalPointsAgainst,
+          'Avg Points For': Math.round(avgPointsFor * 10) / 10,
+          'Avg Points Against': Math.round(avgPointsAgainst * 10) / 10,
+          'Avg Margin': Math.round(avgMargin * 10) / 10,
+          'Spread Wins': spreadWins,
+          'Spread Losses': spreadLosses,
+          'Spread Pushes': spreadPushes,
+          'Total Overs': totalOvers,
+          'Total Unders': totalUnders,
+          'Total Pushes': totalPushes,
+          'ATS Win Rate': Math.round(atsWinRate * 10) / 10,
+          'Over Rate': Math.round(overRate * 10) / 10,
+          'Recent Form': JSON.stringify(recentForm),
+          'Streak Type': streakType,
+          'Streak Count': streakCount,
+          'Last Game Date': game.gameDate,
+        },
+      }),
+    });
+
+    if (!updateResponse.ok) {
+      const error = await updateResponse.json();
+      console.error('❌ Error updating player stats:', error);
+      return null;
+    }
 
     // Update cache
     const updatedPlayer: Player = {
@@ -247,7 +306,7 @@ export async function updatePlayerStats(
       streak: { type: streakType, count: streakCount },
       isActive: fields['Is Active'] !== false,
       lastGameDate: game.gameDate,
-      createdAt: (record as unknown as { _rawJson: { createdTime: string } })._rawJson?.createdTime || '',
+      createdAt: record.createdTime || '',
       updatedAt: new Date().toISOString(),
     };
 
@@ -301,7 +360,7 @@ export async function processGameForPlayerStats(game: HistoricalGame): Promise<v
 }
 
 /**
- * Get all players from Airtable
+ * Get all players from Airtable via REST API
  */
 export async function getAllPlayers(forceRefresh = false): Promise<Player[]> {
   const now = Date.now();
@@ -311,14 +370,36 @@ export async function getAllPlayers(forceRefresh = false): Promise<Player[]> {
     return Array.from(playersCache.values());
   }
 
-  try {
-    const records = await base('Players')
-      .select({
-        sort: [{ field: 'Win Rate', direction: 'desc' }],
-      })
-      .all();
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    console.error('Missing Airtable credentials');
+    return Array.from(playersCache.values());
+  }
 
-    const players = records.map(mapAirtableToPlayer);
+  try {
+    const allRecords: Array<{ id: string; fields: AirtablePlayerFields; createdTime?: string }> = [];
+    let offset: string | undefined;
+
+    // Paginate through all records
+    do {
+      const params = new URLSearchParams();
+      params.append('sort[0][field]', 'Win Rate');
+      params.append('sort[0][direction]', 'desc');
+      params.append('pageSize', '100');
+      if (offset) params.append('offset', offset);
+
+      const response = await airtableRequest(`?${params.toString()}`);
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('Error fetching players:', result);
+        return Array.from(playersCache.values());
+      }
+
+      allRecords.push(...result.records);
+      offset = result.offset;
+    } while (offset);
+
+    const players = allRecords.map(mapRecordToPlayer);
 
     // Update cache
     playersCache.clear();
@@ -333,7 +414,7 @@ export async function getAllPlayers(forceRefresh = false): Promise<Player[]> {
 }
 
 /**
- * Get a single player by name
+ * Get a single player by name via REST API
  */
 export async function getPlayer(name: string): Promise<Player | null> {
   // Check cache first
@@ -341,17 +422,24 @@ export async function getPlayer(name: string): Promise<Player | null> {
     return playersCache.get(name)!;
   }
 
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    console.error('Missing Airtable credentials');
+    return null;
+  }
+
   try {
-    const records = await base('Players')
-      .select({
-        filterByFormula: `{Name} = '${name}'`,
-        maxRecords: 1,
-      })
-      .firstPage();
+    const params = new URLSearchParams();
+    params.append('filterByFormula', `{Name} = '${name}'`);
+    params.append('maxRecords', '1');
 
-    if (records.length === 0) return null;
+    const response = await airtableRequest(`?${params.toString()}`);
+    const result = await response.json();
 
-    const player = mapAirtableToPlayer(records[0]);
+    if (!response.ok || !result.records?.length) {
+      return null;
+    }
+
+    const player = mapRecordToPlayer(result.records[0]);
     playersCache.set(name, player);
     return player;
   } catch (error) {
@@ -383,10 +471,10 @@ export async function getPlayerLeaderboard(
 }
 
 /**
- * Map Airtable record to Player object
+ * Map REST API record to Player object
  */
-function mapAirtableToPlayer(record: Airtable.Record<Airtable.FieldSet>): Player {
-  const fields = record.fields as unknown as AirtablePlayerFields;
+function mapRecordToPlayer(record: { id: string; fields: AirtablePlayerFields; createdTime?: string }): Player {
+  const fields = record.fields;
 
   let recentForm: ('W' | 'L')[] = [];
   try {
@@ -428,7 +516,7 @@ function mapAirtableToPlayer(record: Airtable.Record<Airtable.FieldSet>): Player
     },
     isActive: fields['Is Active'] !== false,
     lastGameDate: fields['Last Game Date'],
-    createdAt: (record as unknown as { _rawJson: { createdTime: string } })._rawJson?.createdTime || '',
+    createdAt: record.createdTime || '',
     updatedAt: new Date().toISOString(),
   };
 }

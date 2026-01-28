@@ -208,11 +208,25 @@ function mapN8NFields(data: Record<string, unknown>): LiveGame {
   const q2Away = Number(getField(data, 'Quarter 2 Away', 'Q2 Away', 'q2_away') || 0);
   const q3Home = Number(getField(data, 'Quarter 3 Home', 'Q3 Home', 'q3_home') || 0);
   const q3Away = Number(getField(data, 'Quarter 3 Away', 'Q3 Away', 'q3_away') || 0);
-  const q4Home = Number(getField(data, 'Quarter 4 Home', 'Q4 Home', 'q4_home') || 0);
-  const q4Away = Number(getField(data, 'Quarter 4 Away', 'Q4 Away', 'q4_away') || 0);
 
   const halftimeHome = Number(getField(data, 'Halftime Score Home', 'Halftime Home') || 0);
   const halftimeAway = Number(getField(data, 'Halftime Score Away', 'Halftime Away') || 0);
+
+  // Get final scores for Q4 calculation
+  const finalHome = Number(getField(data, 'Final Home', 'final_home') || homeScore);
+  const finalAway = Number(getField(data, 'Final Away', 'final_away') || awayScore);
+
+  // Calculate Q4 from: Final - Halftime - Q3
+  // (API doesn't provide Q4 directly, only Q1-Q3 + Halftime + Final)
+  // Q4 = Final - (Q1 + Q2 + Q3) or equivalently Final - Halftime - Q3
+  let q4Home = Number(getField(data, 'Quarter 4 Home', 'Q4 Home', 'q4_home') || 0);
+  let q4Away = Number(getField(data, 'Quarter 4 Away', 'Q4 Away', 'q4_away') || 0);
+
+  // If Q4 not provided and game is in Q4 or final, calculate it
+  if (q4Home === 0 && q4Away === 0 && quarter >= 4) {
+    q4Home = Math.max(0, finalHome - halftimeHome - q3Home);
+    q4Away = Math.max(0, finalAway - halftimeAway - q3Away);
+  }
 
   // Determine game status
   let status: LiveGame['status'] = 'live';

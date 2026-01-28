@@ -83,6 +83,15 @@ export async function saveHistoricalGame(game: LiveGame): Promise<HistoricalGame
   try {
     const { quarterScores, halftimeScores } = game;
 
+    // Calculate Q4 if not provided (API doesn't send Q4 directly)
+    let q4Home = quarterScores.q4Home;
+    let q4Away = quarterScores.q4Away;
+    if (q4Home === 0 && q4Away === 0 && game.homeScore > 0) {
+      // Q4 = Final - Halftime - Q3
+      q4Home = Math.max(0, game.homeScore - halftimeScores.home - quarterScores.q3Home);
+      q4Away = Math.max(0, game.awayScore - halftimeScores.away - quarterScores.q3Away);
+    }
+
     // Determine winner
     let winner: 'home' | 'away' | 'tie' = 'tie';
     if (game.homeScore > game.awayScore) winner = 'home';
@@ -127,8 +136,8 @@ export async function saveHistoricalGame(game: LiveGame): Promise<HistoricalGame
       'Halftime Away': halftimeScores.away,
       'Q3 Home': quarterScores.q3Home,
       'Q3 Away': quarterScores.q3Away,
-      'Q4 Home': quarterScores.q4Home,
-      'Q4 Away': quarterScores.q4Away,
+      'Q4 Home': q4Home,
+      'Q4 Away': q4Away,
       'Total Points': totalPoints,
       'Point Differential': pointDifferential,
       'Winner': winner,
@@ -176,8 +185,8 @@ export async function saveHistoricalGame(game: LiveGame): Promise<HistoricalGame
       halftimeAway: halftimeScores.away,
       q3Home: quarterScores.q3Home,
       q3Away: quarterScores.q3Away,
-      q4Home: quarterScores.q4Home,
-      q4Away: quarterScores.q4Away,
+      q4Home,
+      q4Away,
       winner,
       totalPoints,
       pointDifferential,

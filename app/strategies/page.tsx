@@ -201,8 +201,20 @@ interface StrategyFormData {
 // MAIN COMPONENT
 // ============================================
 
+interface StrategyPerformance {
+  strategyId: string;
+  strategyName: string;
+  signals: number;
+  won: number;
+  lost: number;
+  pushed: number;
+  winRate: number;
+  roi: number;
+}
+
 export default function StrategiesPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [strategyPerformance, setStrategyPerformance] = useState<Map<string, StrategyPerformance>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedStrategy, setExpandedStrategy] = useState<string | null>(null);
@@ -269,8 +281,25 @@ export default function StrategiesPage() {
     }
   };
 
+  const fetchPerformance = async () => {
+    try {
+      const res = await fetch('/api/analytics');
+      const data = await res.json();
+      if (data.success && data.data.strategyPerformance) {
+        const perfMap = new Map<string, StrategyPerformance>();
+        data.data.strategyPerformance.forEach((perf: StrategyPerformance) => {
+          perfMap.set(perf.strategyId, perf);
+        });
+        setStrategyPerformance(perfMap);
+      }
+    } catch (err) {
+      console.error('Failed to fetch performance data:', err);
+    }
+  };
+
   useEffect(() => {
     fetchStrategies();
+    fetchPerformance();
   }, []);
 
   // ============================================
@@ -796,6 +825,26 @@ export default function StrategiesPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* Performance badges */}
+                  {strategyPerformance.has(strategy.id) && (
+                    <>
+                      {(() => {
+                        const perf = strategyPerformance.get(strategy.id)!;
+                        return (
+                          <>
+                            <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                              {perf.won}W-{perf.lost}L
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                              perf.roi >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {perf.roi > 0 ? '+' : ''}{perf.roi.toFixed(1)}% ROI
+                            </span>
+                          </>
+                        );
+                      })()}
+                    </>
+                  )}
                   <span className="text-sm text-slate-500">
                     {strategy.triggers?.length || 0} triggers
                   </span>

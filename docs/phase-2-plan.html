@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAI Bets V3 - Phase 2 Implementation Plan</title>
+    <style>
+        :root {
+            --bg-dark: #0f0f0f;
+            --bg-card: #1a1a1a;
+            --bg-card-hover: #242424;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-red: #ef4444;
+            --accent-purple: #a855f7;
+            --text-primary: #ffffff;
+            --text-secondary: #a1a1aa;
+            --border-color: #2a2a2a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 3rem 0;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+        }
+
+        .phase-badge {
+            display: inline-block;
+            background: var(--accent-purple);
+            color: white;
+            padding: 0.5rem 1.5rem;
+            border-radius: 2rem;
+            font-weight: 600;
+            margin-top: 1rem;
+        }
+
+        /* Navigation */
+        .nav {
+            position: sticky;
+            top: 0;
+            background: var(--bg-dark);
+            padding: 1rem 0;
+            border-bottom: 1px solid var(--border-color);
+            z-index: 100;
+            margin-bottom: 2rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .nav-links a:hover {
+            background: var(--bg-card);
+            color: var(--text-primary);
+        }
+
+        /* Section Styles */
+        .section {
+            margin-bottom: 4rem;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-number {
+            width: 3rem;
+            height: 3rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .section h2 {
+            font-size: 1.8rem;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+
+        .card h3 {
+            color: var(--accent-blue);
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        .card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        /* Status indicators */
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-watching { background: rgba(234, 179, 8, 0.2); color: var(--accent-yellow); }
+        .status-bet-taken { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); }
+        .status-expired { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+        .status-monitoring { background: rgba(59, 130, 246, 0.2); color: var(--accent-blue); }
+
+        /* Code blocks */
+        .code-block {
+            background: #0d0d0d;
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.85rem;
+            margin: 1rem 0;
+        }
+
+        .code-block code {
+            color: #e5e5e5;
+        }
+
+        .code-comment { color: #6b7280; }
+        .code-string { color: #22c55e; }
+        .code-keyword { color: #a855f7; }
+        .code-function { color: #3b82f6; }
+
+        /* Flow diagram */
+        .flow-diagram {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            padding: 2rem;
+            background: var(--bg-card);
+            border-radius: 1rem;
+            margin: 1rem 0;
+        }
+
+        .flow-step {
+            background: var(--bg-dark);
+            border: 2px solid var(--border-color);
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            min-width: 140px;
+        }
+
+        .flow-step.active {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+        }
+
+        .flow-step .emoji {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .flow-step .label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .flow-arrow {
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+        }
+
+        /* Tables */
+        .table-wrapper {
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            color: var(--text-primary);
+        }
+
+        tr:hover td {
+            background: var(--bg-card);
+        }
+
+        /* Discord preview */
+        .discord-preview {
+            background: #36393f;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            max-width: 500px;
+            margin: 1rem auto;
+        }
+
+        .discord-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .discord-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #5865f2, #7c3aed);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .discord-name {
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .discord-bot-tag {
+            background: #5865f2;
+            color: #fff;
+            font-size: 0.65rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 0.2rem;
+            font-weight: 500;
+        }
+
+        .discord-content {
+            color: #dcddde;
+            margin-left: 55px;
+        }
+
+        .discord-embed {
+            border-left: 4px solid var(--accent-green);
+            background: #2f3136;
+            padding: 0.75rem;
+            border-radius: 0 0.25rem 0.25rem 0;
+            margin-top: 0.5rem;
+        }
+
+        .discord-embed-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .discord-embed-fields {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .discord-field-name {
+            color: #72767d;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .discord-field-value {
+            color: #dcddde;
+        }
+
+        /* Checklist */
+        .checklist {
+            list-style: none;
+        }
+
+        .checklist li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .checklist li:last-child {
+            border-bottom: none;
+        }
+
+        .check-icon {
+            width: 1.5rem;
+            height: 1.5rem;
+            border: 2px solid var(--border-color);
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .check-icon.done {
+            background: var(--accent-green);
+            border-color: var(--accent-green);
+        }
+
+        /* Priority tags */
+        .priority {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .priority-high { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+        .priority-medium { background: rgba(234, 179, 8, 0.2); color: var(--accent-yellow); }
+        .priority-low { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); }
+
+        /* Summary boxes */
+        .summary-box {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(168, 85, 247, 0.1));
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .summary-box h3 {
+            color: var(--accent-blue);
+            margin-bottom: 1rem;
+        }
+
+        /* Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 0.5rem;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--border-color);
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-bottom: 1.5rem;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -1.5rem;
+            top: 0.25rem;
+            width: 12px;
+            height: 12px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            border: 2px solid var(--bg-dark);
+        }
+
+        .timeline-item h4 {
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .timeline-item p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Highlight box */
+        .highlight-box {
+            background: rgba(234, 179, 8, 0.1);
+            border: 1px solid rgba(234, 179, 8, 0.3);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .highlight-box .icon {
+            font-size: 1.2rem;
+            margin-right: 0.5rem;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: 3rem;
+            color: var(--text-secondary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .card-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .flow-diagram {
+                flex-direction: column;
+            }
+
+            .flow-arrow {
+                transform: rotate(90deg);
+            }
+
+            .discord-embed-fields {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎯 MAI Bets V3</h1>
+            <p class="subtitle">NBA 2K Simulation Betting Signal System</p>
+            <span class="phase-badge">Phase 2: Making It Operational</span>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="nav">
+            <div class="nav-links">
+                <a href="#overview">Overview</a>
+                <a href="#signal-flow">Signal Flow</a>
+                <a href="#webhook">Webhook</a>
+                <a href="#triggers">Triggers</a>
+                <a href="#odds">Odds Checking</a>
+                <a href="#notifications">Discord</a>
+                <a href="#game-end">Game End</a>
+                <a href="#data-layer">Data Layer</a>
+                <a href="#dashboard">Dashboard</a>
+                <a href="#tasks">Task List</a>
+            </div>
+        </nav>
+
+        <!-- Overview Section -->
+        <section id="overview" class="section">
+            <div class="section-header">
+                <div class="section-number">1</div>
+                <h2>Phase 2 Overview</h2>
+            </div>
+
+            <div class="summary-box">
+                <h3>🎯 Goal: Connect Everything & Go Live</h3>
+                <p>Phase 1 built the data structures and logic. Phase 2 connects the webhook, trigger evaluation, odds checking, and notifications into a fully operational system.</p>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <h3>📡 Webhook Processing</h3>
+                    <p>Process incoming game updates every 2-3 seconds, evaluate triggers, and manage signal lifecycle.</p>
+                </div>
+                <div class="card">
+                    <h3>🔍 Trigger Engine</h3>
+                    <p>Parse JSON conditions from Airtable and evaluate against live game data.</p>
+                </div>
+                <div class="card">
+                    <h3>📊 Odds Alignment</h3>
+                    <p>Check if current odds meet requirements and mark bets as taken automatically.</p>
+                </div>
+                <div class="card">
+                    <h3>🔔 Discord Alerts</h3>
+                    <p>Send beautiful notifications when bets are available and game results.</p>
+                </div>
+                <div class="card">
+                    <h3>🏁 Game End Detection</h3>
+                    <p>Edge function to ensure every game is properly marked as ended.</p>
+                </div>
+                <div class="card">
+                    <h3>👤 Data Layer</h3>
+                    <p>Players table, historical games storage, and 5,000+ record import for backtesting.</p>
+                </div>
+                <div class="card">
+                    <h3>📈 Dashboard</h3>
+                    <p>Real-time monitoring with filters, performance tracking, and manual controls.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Signal Flow Section -->
+        <section id="signal-flow" class="section">
+            <div class="section-header">
+                <div class="section-number">2</div>
+                <h2>Signal Lifecycle Flow</h2>
+            </div>
+
+            <h3 style="margin-bottom: 1rem; color: var(--text-secondary);">Two-Stage Strategies (Blowout Protection, Gap Recovery)</h3>
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="emoji">⚡</div>
+                    <div><strong>Entry Trigger</strong></div>
+                    <div class="label">Condition met</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">
+                    <div class="emoji">🔵</div>
+                    <div><strong>Monitoring</strong></div>
+                    <div class="label">Waiting for close</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">
+                    <div class="emoji">⚡</div>
+                    <div><strong>Close Trigger</strong></div>
+                    <div class="label">Condition met</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">
+                    <div class="emoji">🟡</div>
+                    <div><strong>Watching</strong></div>
+                    <div class="label">Checking odds</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step active">
+                    <div class="emoji">🟢</div>
+                    <div><strong>Bet Taken</strong></div>
+                    <div class="label">Odds aligned!</div>
+                </div>
+            </div>
+
+            <h3 style="margin: 2rem 0 1rem; color: var(--text-secondary);">One-Stage Strategies (Ultra-Safe, Lock It In)</h3>
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="emoji">⚡</div>
+                    <div><strong>Entry Trigger</strong></div>
+                    <div class="label">Condition met</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">
+                    <div class="emoji">🟡</div>
+                    <div><strong>Watching</strong></div>
+                    <div class="label">Checking odds</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step active">
+                    <div class="emoji">🟢</div>
+                    <div><strong>Bet Taken</strong></div>
+                    <div class="label">Odds aligned!</div>
+                </div>
+            </div>
+
+            <div class="highlight-box">
+                <span class="icon">⏰</span>
+                <strong>Expiry Rule:</strong> If odds never align before 2:20 remaining in Q4, the signal expires (sportsbooks close lines).
+            </div>
+        </section>
+
+        <!-- Webhook Processing -->
+        <section id="webhook" class="section">
+            <div class="section-header">
+                <div class="section-number">3</div>
+                <h2>Webhook Processing</h2>
+            </div>
+
+            <div class="card">
+                <h3>📡 Every 2-3 Seconds</h3>
+                <p>The webhook receives game updates continuously. Here's what happens on each update:</p>
+
+                <div class="code-block">
+                    <code>
+<span class="code-comment">// Webhook receives game update</span>
+<span class="code-keyword">async function</span> <span class="code-function">processGameUpdate</span>(game) {
+  <span class="code-comment">// 1. Load all active strategies</span>
+  <span class="code-keyword">const</span> strategies = <span class="code-keyword">await</span> getActiveStrategies();
+
+  <span class="code-comment">// 2. For each strategy, check if we should create a signal</span>
+  <span class="code-keyword">for</span> (<span class="code-keyword">const</span> strategy <span class="code-keyword">of</span> strategies) {
+    <span class="code-comment">// Skip if signal already exists for this strategy/game</span>
+    <span class="code-keyword">if</span> (hasActiveSignal(strategy.id, game.id)) {
+      <span class="code-comment">// Check close triggers if in monitoring</span>
+      <span class="code-function">checkCloseTriggers</span>(strategy, game);
+      <span class="code-keyword">continue</span>;
+    }
+
+    <span class="code-comment">// Evaluate entry triggers</span>
+    <span class="code-keyword">const</span> entryFired = <span class="code-function">evaluateTriggers</span>(strategy.entryTriggers, game);
+    <span class="code-keyword">if</span> (entryFired) {
+      <span class="code-function">createSignal</span>(strategy, game);
+    }
+  }
+
+  <span class="code-comment">// 3. Check all watching signals for odds alignment</span>
+  <span class="code-keyword">await</span> <span class="code-function">checkWatchingSignalsForOdds</span>(game, strategies);
+}
+                    </code>
+                </div>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <h3>✅ What We Check</h3>
+                    <ul style="color: var(--text-secondary); padding-left: 1.2rem;">
+                        <li>Entry triggers for new signals</li>
+                        <li>Close triggers for monitoring signals</li>
+                        <li>Odds alignment for watching signals</li>
+                        <li>Expiry time (2:20 Q4)</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>🚫 Rules</h3>
+                    <ul style="color: var(--text-secondary); padding-left: 1.2rem;">
+                        <li>One signal per strategy per game</li>
+                        <li>Once bet_taken, signal is complete</li>
+                        <li>No re-entry if odds fluctuate</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Trigger Evaluation -->
+        <section id="triggers" class="section">
+            <div class="section-header">
+                <div class="section-number">4</div>
+                <h2>Trigger Evaluation Engine</h2>
+            </div>
+
+            <div class="card">
+                <h3>📋 Your Airtable Trigger Format</h3>
+                <p style="margin-bottom: 1rem;">Conditions stored as JSON arrays in a single field:</p>
+
+                <div class="code-block">
+                    <code>
+<span class="code-comment">// Blowout Protection - Entry</span>
+[
+  {"field": "halftimeLead", "operator": "greater_than_or_equal", "value": 10}
+]
+
+<span class="code-comment">// Blowout Protection - Close</span>
+[
+  {"field": "currentLead", "operator": "less_than_or_equal", "value": 6}
+]
+
+<span class="code-comment">// Lock It In - Entry</span>
+[
+  {"field": "quarter", "operator": "equals", "value": 3},
+  {"field": "currentLead", "operator": "greater_than_or_equal", "value": 15}
+]
+                    </code>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>⚙️ Condition Parser</h3>
+                <div class="code-block">
+                    <code>
+<span class="code-keyword">function</span> <span class="code-function">evaluateCondition</span>(condition, game) {
+  <span class="code-keyword">const</span> { field, operator, value } = condition;
+  <span class="code-keyword">const</span> actual = <span class="code-function">getGameValue</span>(field, game);
+
+  <span class="code-keyword">switch</span> (operator) {
+    <span class="code-keyword">case</span> <span class="code-string">'equals'</span>: <span class="code-keyword">return</span> actual === value;
+    <span class="code-keyword">case</span> <span class="code-string">'greater_than'</span>: <span class="code-keyword">return</span> actual > value;
+    <span class="code-keyword">case</span> <span class="code-string">'greater_than_or_equal'</span>: <span class="code-keyword">return</span> actual >= value;
+    <span class="code-keyword">case</span> <span class="code-string">'less_than'</span>: <span class="code-keyword">return</span> actual < value;
+    <span class="code-keyword">case</span> <span class="code-string">'less_than_or_equal'</span>: <span class="code-keyword">return</span> actual <= value;
+  }
+}
+                    </code>
+                </div>
+            </div>
+
+            <h3 style="margin: 2rem 0 1rem;">Available Game Fields</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Field Name</th>
+                            <th>Description</th>
+                            <th>Example Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>quarter</code></td>
+                            <td>Current quarter (1-4, 5+ for OT)</td>
+                            <td>3</td>
+                        </tr>
+                        <tr>
+                            <td><code>currentLead</code></td>
+                            <td>Absolute score difference</td>
+                            <td>15</td>
+                        </tr>
+                        <tr>
+                            <td><code>halftimeLead</code></td>
+                            <td>Lead at halftime (stored)</td>
+                            <td>10</td>
+                        </tr>
+                        <tr>
+                            <td><code>homeScore</code></td>
+                            <td>Home team score</td>
+                            <td>67</td>
+                        </tr>
+                        <tr>
+                            <td><code>awayScore</code></td>
+                            <td>Away team score</td>
+                            <td>52</td>
+                        </tr>
+                        <tr>
+                            <td><code>spread</code></td>
+                            <td>Current home spread</td>
+                            <td>-4.5</td>
+                        </tr>
+                        <tr>
+                            <td><code>total</code></td>
+                            <td>Current total line</td>
+                            <td>205.5</td>
+                        </tr>
+                        <tr>
+                            <td><code>timeRemainingSeconds</code></td>
+                            <td>Time left in seconds</td>
+                            <td>320</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Odds Checking -->
+        <section id="odds" class="section">
+            <div class="section-header">
+                <div class="section-number">5</div>
+                <h2>Odds Alignment Logic</h2>
+            </div>
+
+            <div class="card">
+                <h3>📊 Checking Odds Requirements</h3>
+                <p>When a signal is in "watching" status, every game update checks if odds now meet the requirement.</p>
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Odds Type</th>
+                            <th>Requirement Logic</th>
+                            <th>Example</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>spread</code></td>
+                            <td>actual ≥ required (less negative = easier)</td>
+                            <td>-3.5 ≥ -4.5 ✅</td>
+                        </tr>
+                        <tr>
+                            <td><code>moneyline</code></td>
+                            <td>actual ≥ required (better payout)</td>
+                            <td>-140 ≥ -150 ✅</td>
+                        </tr>
+                        <tr>
+                            <td><code>total_over</code></td>
+                            <td>actual ≤ required (lower line = easier over)</td>
+                            <td>205 ≤ 210 ✅</td>
+                        </tr>
+                        <tr>
+                            <td><code>total_under</code></td>
+                            <td>actual ≥ required (higher line = easier under)</td>
+                            <td>215 ≥ 210 ✅</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="highlight-box">
+                <span class="icon">🎯</span>
+                <strong>Bet Side:</strong> We track which team was leading when the trigger fired. The odds check uses that team's line (leading_team, trailing_team, home, or away).
+            </div>
+        </section>
+
+        <!-- Discord Notifications -->
+        <section id="notifications" class="section">
+            <div class="section-header">
+                <div class="section-number">6</div>
+                <h2>Discord Notifications</h2>
+            </div>
+
+            <div class="card">
+                <h3>🔔 Two Notification Types</h3>
+                <p style="margin-bottom: 1rem;">Keep it simple - only alert when action is needed or results are in.</p>
+
+                <div class="card-grid">
+                    <div class="card" style="background: #2a2a2a;">
+                        <span class="status status-bet-taken">🟢 Bet Available</span>
+                        <p style="margin-top: 0.5rem;">When odds align and bet can be taken</p>
+                    </div>
+                    <div class="card" style="background: #2a2a2a;">
+                        <span class="status status-watching">🏁 Game Result</span>
+                        <p style="margin-top: 0.5rem;">Win, Loss, or Push when game ends</p>
+                    </div>
+                </div>
+            </div>
+
+            <h3 style="margin: 2rem 0 1rem;">Bet Available Notification</h3>
+            <div class="discord-preview">
+                <div class="discord-header">
+                    <div class="discord-avatar">M</div>
+                    <span class="discord-name">MAI Picks</span>
+                    <span class="discord-bot-tag">APP</span>
+                </div>
+                <div class="discord-content">
+                    <div>🎯 <strong>ARCHITECT</strong></div>
+                    <div>🧩 BetSlip 🧩</div>
+                    <div style="color: var(--accent-green);">-4.5 or lower</div>
+                    <div class="discord-embed">
+                        <div class="discord-embed-title">📊 Blowout Protection</div>
+                        <div class="discord-embed-fields">
+                            <div>
+                                <div class="discord-field-name">Matchup</div>
+                                <div class="discord-field-value">ARCHITECT @ MYTH</div>
+                            </div>
+                            <div>
+                                <div class="discord-field-name">Score</div>
+                                <div class="discord-field-value">27 - 22</div>
+                            </div>
+                            <div>
+                                <div class="discord-field-name">Current Gap</div>
+                                <div class="discord-field-value">5</div>
+                            </div>
+                            <div>
+                                <div class="discord-field-name">Quarter</div>
+                                <div class="discord-field-value">Q3</div>
+                            </div>
+                            <div>
+                                <div class="discord-field-name">Time</div>
+                                <div class="discord-field-value">4:51</div>
+                            </div>
+                            <div>
+                                <div class="discord-field-name">Spread</div>
+                                <div class="discord-field-value">6.5 / -6.5</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h3 style="margin: 2rem 0 1rem;">Game Result Notification</h3>
+            <div class="discord-preview">
+                <div class="discord-header">
+                    <div class="discord-avatar">M</div>
+                    <span class="discord-name">MAI Picks</span>
+                    <span class="discord-bot-tag">APP</span>
+                </div>
+                <div class="discord-content">
+                    <div>✅ <strong>WIN</strong> - Blowout Protection</div>
+                    <div class="discord-embed" style="border-color: var(--accent-green);">
+                        <div class="discord-embed-title">ARCHITECT covered -4.5</div>
+                        <div class="discord-embed-fields">
+                            <div>
+                                <div class="discord-field-name">Final Score</div>
+                                <div class="discord-field-value">ARCHITECT 98 - MYTH 89</div>
+                            </div>
+                            <div>
+                                <div class="discord-field-name">Spread Taken</div>
+                                <div class="discord-field-value">-4.5</div>
+                            </div>
+                            <div>
+                                <div class="discord-field-name">Margin</div>
+                                <div class="discord-field-value">+9 (covered by 4.5)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Game End Detection -->
+        <section id="game-end" class="section">
+            <div class="section-header">
+                <div class="section-number">7</div>
+                <h2>Game End Detection</h2>
+            </div>
+
+            <div class="highlight-box">
+                <span class="icon">⚠️</span>
+                <strong>Problem:</strong> Webhook sometimes stops sending data before game truly ends, or time remaining doesn't reach 0:00.
+            </div>
+
+            <div class="card">
+                <h3>🏁 Solution: Edge Function Watchdog</h3>
+                <p>A scheduled function that runs every few minutes to check for "stuck" games.</p>
+
+                <div class="code-block">
+                    <code>
+<span class="code-comment">// Edge function - runs every 5 minutes</span>
+<span class="code-keyword">async function</span> <span class="code-function">checkForEndedGames</span>() {
+  <span class="code-comment">// Get games that haven't been updated in 10+ minutes</span>
+  <span class="code-keyword">const</span> staleGames = <span class="code-keyword">await</span> <span class="code-function">getStaleGames</span>(10);
+
+  <span class="code-keyword">for</span> (<span class="code-keyword">const</span> game <span class="code-keyword">of</span> staleGames) {
+    <span class="code-comment">// If Q4 with low time, consider ended</span>
+    <span class="code-keyword">if</span> (game.quarter >= 4 && game.timeRemainingSeconds < 60) {
+      <span class="code-keyword">await</span> <span class="code-function">markGameEnded</span>(game);
+      <span class="code-keyword">await</span> <span class="code-function">calculateResults</span>(game);
+      <span class="code-keyword">await</span> <span class="code-function">sendResultNotifications</span>(game);
+    }
+  }
+}
+                    </code>
+                </div>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <h3>Game Marked Ended When</h3>
+                    <ul style="color: var(--text-secondary); padding-left: 1.2rem;">
+                        <li>Q4 0:00 reached (normal end)</li>
+                        <li>No updates for 10+ min AND Q4 with &lt;1 min</li>
+                        <li>Manual override (admin action)</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>Result Calculation</h3>
+                    <ul style="color: var(--text-secondary); padding-left: 1.2rem;">
+                        <li>Compare final margin to spread taken</li>
+                        <li>Win if covered, Loss if not, Push if exact</li>
+                        <li>Update signal status accordingly</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Data Layer -->
+        <section id="data-layer" class="section">
+            <div class="section-header">
+                <div class="section-number">8</div>
+                <h2>Data Layer (Players & Historical Games)</h2>
+            </div>
+
+            <div class="summary-box">
+                <h3>📊 Foundation for Analytics & Backtesting</h3>
+                <p>Store player information and completed games to enable performance tracking, backtesting strategies, and future analytics dashboards.</p>
+            </div>
+
+            <div class="card">
+                <h3>👤 Players Table (New)</h3>
+                <p style="margin-bottom: 1rem;">Track individual players (gamers) extracted from team names like "OKC Thunder (KJMR)" → KJMR</p>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>Name</code></td>
+                                <td>Text</td>
+                                <td>Player name (e.g., KJMR, HYPER)</td>
+                            </tr>
+                            <tr>
+                                <td><code>Games Played</code></td>
+                                <td>Count</td>
+                                <td>Total games (rollup from Historical Games)</td>
+                            </tr>
+                            <tr>
+                                <td><code>Wins</code></td>
+                                <td>Count</td>
+                                <td>Total wins</td>
+                            </tr>
+                            <tr>
+                                <td><code>Losses</code></td>
+                                <td>Count</td>
+                                <td>Total losses</td>
+                            </tr>
+                            <tr>
+                                <td><code>Win Rate</code></td>
+                                <td>Formula</td>
+                                <td>Wins / Games Played</td>
+                            </tr>
+                            <tr>
+                                <td><code>Avg Points</code></td>
+                                <td>Rollup</td>
+                                <td>Average points scored</td>
+                            </tr>
+                            <tr>
+                                <td><code>Historical Games</code></td>
+                                <td>Link</td>
+                                <td>Link to games as home or away</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📜 Historical Games Table (Existing)</h3>
+                <p style="margin-bottom: 1rem;">Your table is already set up with the right fields. Here's how we'll use it:</p>
+
+                <div class="card-grid">
+                    <div class="card" style="background: #2a2a2a;">
+                        <h3 style="color: var(--accent-green);">✅ Already Have</h3>
+                        <ul style="color: var(--text-secondary); padding-left: 1.2rem; font-size: 0.9rem;">
+                            <li>Team names & IDs</li>
+                            <li>Final scores</li>
+                            <li>Quarter-by-quarter scores</li>
+                            <li>Halftime Home/Away</li>
+                            <li>Point Differential</li>
+                            <li>Spread & Total lines</li>
+                            <li>Spread Result & Total Result</li>
+                            <li>Game Date</li>
+                            <li>Raw Data (JSON)</li>
+                        </ul>
+                    </div>
+                    <div class="card" style="background: #2a2a2a;">
+                        <h3 style="color: var(--accent-yellow);">🔧 Will Add</h3>
+                        <ul style="color: var(--text-secondary); padding-left: 1.2rem; font-size: 0.9rem;">
+                            <li>Home Player (link to Players)</li>
+                            <li>Away Player (link to Players)</li>
+                            <li>Game ID (from LiveOdds)</li>
+                            <li>Event ID</li>
+                            <li>Status (live, ended)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🔄 Data Flow: Game Completion</h3>
+                <p>When a game ends, we store it in Historical Games for future reference.</p>
+
+                <div class="code-block">
+                    <code>
+<span class="code-comment">// When game ends (via webhook or edge function)</span>
+<span class="code-keyword">async function</span> <span class="code-function">storeCompletedGame</span>(game) {
+  <span class="code-comment">// 1. Extract player names from team names</span>
+  <span class="code-keyword">const</span> homePlayer = <span class="code-function">extractPlayerName</span>(game.homeTeam);
+  <span class="code-keyword">const</span> awayPlayer = <span class="code-function">extractPlayerName</span>(game.awayTeam);
+
+  <span class="code-comment">// 2. Find or create player records</span>
+  <span class="code-keyword">const</span> homePlayerId = <span class="code-keyword">await</span> <span class="code-function">findOrCreatePlayer</span>(homePlayer);
+  <span class="code-keyword">const</span> awayPlayerId = <span class="code-keyword">await</span> <span class="code-function">findOrCreatePlayer</span>(awayPlayer);
+
+  <span class="code-comment">// 3. Create Historical Game record</span>
+  <span class="code-keyword">await</span> base(<span class="code-string">'Historical Games'</span>).create({
+    <span class="code-string">'Home Team'</span>: game.homeTeam,
+    <span class="code-string">'Away Team'</span>: game.awayTeam,
+    <span class="code-string">'Home Player'</span>: [homePlayerId],
+    <span class="code-string">'Away Player'</span>: [awayPlayerId],
+    <span class="code-string">'Home Score'</span>: game.homeScore,
+    <span class="code-string">'Away Score'</span>: game.awayScore,
+    <span class="code-string">'Halftime Home'</span>: game.halftimeHome,
+    <span class="code-string">'Halftime Away'</span>: game.halftimeAway,
+    <span class="code-comment">// ... all quarter scores, spread, total, etc.</span>
+  });
+}
+
+<span class="code-comment">// Extract "KJMR" from "OKC Thunder (KJMR)"</span>
+<span class="code-keyword">function</span> <span class="code-function">extractPlayerName</span>(teamName) {
+  <span class="code-keyword">const</span> match = teamName.match(/\(([^)]+)\)/);
+  <span class="code-keyword">return</span> match ? match[1] : teamName;
+}
+                    </code>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📥 Import 5,000+ Historical Records</h3>
+                <p>Kickstart backtesting with your existing V2 data.</p>
+
+                <div class="highlight-box">
+                    <span class="icon">📋</span>
+                    <strong>Import Script:</strong> We'll create a script to import your 5,000+ historical games from V2, extracting player names and linking to the Players table.
+                </div>
+
+                <div class="card-grid">
+                    <div class="card" style="background: #2a2a2a;">
+                        <h3>Import Options</h3>
+                        <ul style="color: var(--text-secondary); padding-left: 1.2rem; font-size: 0.9rem;">
+                            <li>CSV export from V2 → import script</li>
+                            <li>Direct API copy if same Airtable base</li>
+                            <li>Batch processing (Airtable rate limits)</li>
+                        </ul>
+                    </div>
+                    <div class="card" style="background: #2a2a2a;">
+                        <h3>What It Enables</h3>
+                        <ul style="color: var(--text-secondary); padding-left: 1.2rem; font-size: 0.9rem;">
+                            <li>Backtest strategies against 5,000+ games</li>
+                            <li>Validate trigger conditions</li>
+                            <li>Calculate expected win rates</li>
+                            <li>Identify patterns by player/matchup</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🧪 Backtesting Engine</h3>
+                <p>Run strategies against historical data to validate performance before going live.</p>
+
+                <div class="code-block">
+                    <code>
+<span class="code-comment">// Backtest a strategy against historical games</span>
+<span class="code-keyword">async function</span> <span class="code-function">backtestStrategy</span>(strategyId, dateRange?) {
+  <span class="code-keyword">const</span> strategy = <span class="code-keyword">await</span> <span class="code-function">getStrategy</span>(strategyId);
+  <span class="code-keyword">const</span> games = <span class="code-keyword">await</span> <span class="code-function">getHistoricalGames</span>(dateRange);
+
+  <span class="code-keyword">const</span> results = { wins: 0, losses: 0, pushes: 0, noTrigger: 0 };
+
+  <span class="code-keyword">for</span> (<span class="code-keyword">const</span> game <span class="code-keyword">of</span> games) {
+    <span class="code-comment">// Simulate trigger evaluation at each quarter</span>
+    <span class="code-keyword">const</span> triggered = <span class="code-function">simulateTriggers</span>(strategy, game);
+
+    <span class="code-keyword">if</span> (!triggered) {
+      results.noTrigger++;
+      <span class="code-keyword">continue</span>;
+    }
+
+    <span class="code-comment">// Check if odds would have aligned</span>
+    <span class="code-keyword">const</span> oddsAligned = <span class="code-function">checkHistoricalOdds</span>(strategy, game);
+
+    <span class="code-keyword">if</span> (!oddsAligned) {
+      results.expired++;
+      <span class="code-keyword">continue</span>;
+    }
+
+    <span class="code-comment">// Calculate result based on final score</span>
+    <span class="code-keyword">const</span> result = <span class="code-function">calculateResult</span>(strategy, game);
+    results[result]++;
+  }
+
+  <span class="code-keyword">return</span> {
+    ...results,
+    winRate: results.wins / (results.wins + results.losses + results.pushes),
+    totalGames: games.length,
+    triggered: games.length - results.noTrigger
+  };
+}
+                    </code>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dashboard Enhancements -->
+        <section id="dashboard" class="section">
+            <div class="section-header">
+                <div class="section-number">9</div>
+                <h2>Dashboard Enhancements</h2>
+            </div>
+
+            <div class="card-grid">
+                <div class="card">
+                    <h3>📊 Real-Time Signal List</h3>
+                    <ul style="color: var(--text-secondary); padding-left: 1.2rem;">
+                        <li>Auto-refresh every 5 seconds</li>
+                        <li>Filter by status (watching, bet_taken, etc.)</li>
+                        <li>Filter by date (today, this week)</li>
+                        <li>Search by team or strategy</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>🎮 Active Games Panel</h3>
+                    <ul style="color: var(--text-secondary); padding-left: 1.2rem;">
+                        <li>Live game scores</li>
+                        <li>Current spread/total</li>
+                        <li>Signals active on each game</li>
+                        <li>Time remaining</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>📈 Performance Summary</h3>
+                    <ul style="color: var(--text-secondary); padding-left: 1.2rem;">
+                        <li>W-L-P record by strategy</li>
+                        <li>Win percentage</li>
+                        <li>Streak tracking</li>
+                        <li>Date range selection</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>🛠️ Manual Controls</h3>
+                    <ul style="color: var(--text-secondary); padding-left: 1.2rem;">
+                        <li>Cancel active signal</li>
+                        <li>Force mark game ended</li>
+                        <li>Override result (admin)</li>
+                        <li>Resend notification</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Task List -->
+        <section id="tasks" class="section">
+            <div class="section-header">
+                <div class="section-number">10</div>
+                <h2>Implementation Task List</h2>
+            </div>
+
+            <div class="card">
+                <h3>🔧 Core Implementation</h3>
+                <ul class="checklist">
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Trigger Condition Parser</strong>
+                            <span class="priority priority-high">High</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Parse JSON conditions and evaluate against game data</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Webhook Handler Enhancement</strong>
+                            <span class="priority priority-high">High</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Full signal lifecycle processing on every update</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Discord Notification Service</strong>
+                            <span class="priority priority-high">High</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Send bet alerts and game results with embeds</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Game End Edge Function</strong>
+                            <span class="priority priority-medium">Medium</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Watchdog to catch stuck games and calculate results</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Result Calculation Service</strong>
+                            <span class="priority priority-medium">Medium</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Compare final score to spread taken, determine W/L/P</p>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3>🖥️ Dashboard Features</h3>
+                <ul class="checklist">
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Real-Time Signal List</strong>
+                            <span class="priority priority-high">High</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Auto-refresh with status filtering</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Active Games Panel</strong>
+                            <span class="priority priority-medium">Medium</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Live scores and signals overlay</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Performance Summary</strong>
+                            <span class="priority priority-medium">Medium</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">W-L-P record and win percentage</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Manual Override Controls</strong>
+                            <span class="priority priority-low">Low</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Admin actions for edge cases</p>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3>📊 Data Layer</h3>
+                <ul class="checklist">
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Players Table & Service</strong>
+                            <span class="priority priority-medium">Medium</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Create Players table in Airtable, build player extraction service</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Historical Games Integration</strong>
+                            <span class="priority priority-medium">Medium</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Store completed games with player links</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Import Script for V2 Data</strong>
+                            <span class="priority priority-medium">Medium</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Import 5,000+ historical games from V2</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Backtesting Engine</strong>
+                            <span class="priority priority-low">Low</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Run strategies against historical data</p>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3>🧪 Testing & Validation</h3>
+                <ul class="checklist">
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>End-to-End Signal Flow Test</strong>
+                            <span class="priority priority-high">High</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Simulate webhook → trigger → signal → notification</p>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="check-icon"></div>
+                        <div>
+                            <strong>Backtest Validation</strong>
+                            <span class="priority priority-low">Low</span>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem;">Verify backtest results match expected outcomes</p>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Implementation Order -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-number">11</div>
+                <h2>Recommended Build Order</h2>
+            </div>
+
+            <div class="timeline">
+                <div class="timeline-item">
+                    <h4>Step 1: Trigger Parser</h4>
+                    <p>Build the condition parser that reads JSON from Airtable and evaluates against game data.</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>Step 2: Webhook Handler</h4>
+                    <p>Enhance webhook to process triggers and manage full signal lifecycle.</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>Step 3: Discord Service</h4>
+                    <p>Create notification service for bet alerts and results.</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>Step 4: Game End Detection</h4>
+                    <p>Build edge function watchdog and result calculation.</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>Step 5: Data Layer</h4>
+                    <p>Players table, historical games storage, and import script for 5,000+ V2 records.</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>Step 6: Dashboard</h4>
+                    <p>Enhance UI with real-time data and controls.</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>Step 7: Testing & Backtesting</h4>
+                    <p>End-to-end testing and backtest validation against historical data.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>MAI Bets V3 - Phase 2 Implementation Plan</p>
+            <p style="font-size: 0.85rem; margin-top: 0.5rem;">Built for NBA 2K Simulation Betting Signals</p>
+        </footer>
+    </div>
+</body>
+</html>

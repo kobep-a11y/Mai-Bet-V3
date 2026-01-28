@@ -4,6 +4,8 @@ import {
   StrategyTrigger,
   Condition,
   DiscordWebhook,
+  OddsRequirement,
+  BetSide,
   AirtableStrategyFields,
   AirtableTriggerFields,
 } from '@/types';
@@ -96,6 +98,21 @@ export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]>
       // Get triggers for this strategy
       const triggers = triggersByStrategy.get(record.id) || [];
 
+      // Build odds requirement if present
+      let oddsRequirement: OddsRequirement | undefined;
+      if (fields['Odds Type'] && fields['Odds Value'] !== undefined) {
+        oddsRequirement = {
+          type: fields['Odds Type'],
+          value: fields['Odds Value'],
+          betSide: (fields['Bet Side'] as BetSide) || 'leading_team',
+        };
+      }
+
+      // Determine if two-stage (has both entry and close triggers)
+      const hasEntryTrigger = triggers.some((t) => t.entryOrClose === 'entry');
+      const hasCloseTrigger = triggers.some((t) => t.entryOrClose === 'close');
+      const isTwoStage = fields['Is Two Stage'] ?? (hasEntryTrigger && hasCloseTrigger);
+
       return {
         id: record.id,
         name: fields.Name || 'Unnamed Strategy',
@@ -104,6 +121,9 @@ export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]>
         isActive: fields['Is Active'] || false,
         triggers: triggers.sort((a, b) => a.order - b.order),
         discordWebhooks,
+        oddsRequirement,
+        isTwoStage,
+        expiryTimeQ4: fields['Expiry Time Q4'] || '2:20',
         createdAt: (record as unknown as { _rawJson: { createdTime: string } })._rawJson?.createdTime || '',
         updatedAt: new Date().toISOString(),
       };

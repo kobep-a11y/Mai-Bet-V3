@@ -1,4 +1,4 @@
-import { Signal, Strategy, DiscordWebhook, TriggerEvaluationResult } from '@/types';
+import { Signal, Strategy, DiscordWebhook, TriggerEvaluationResult, LiveGame } from '@/types';
 
 interface DiscordEmbed {
   title: string;
@@ -248,4 +248,191 @@ export async function sendToMultipleWebhooks(
   }
 
   return { sent, failed };
+}
+
+/**
+ * Extract player name from team name
+ * e.g., "OKC Thunder (KJMR)" -> "KJMR"
+ */
+function extractPlayerName(teamName: string): string {
+  const match = teamName.match(/\(([^)]+)\)/);
+  return match ? match[1] : teamName;
+}
+
+/**
+ * Get team emoji based on context
+ */
+function getTeamEmoji(isLeading: boolean): string {
+  return isLeading ? '🟢' : '🔴';
+}
+
+/**
+ * Sends a bet available alert when odds align
+ * This is the PRIMARY notification users see - when a bet becomes actionable
+ */
+export async function sendBetAvailableAlert(
+  signal: Signal,
+  strategy: Strategy,
+  game: LiveGame
+): Promise<number> {
+  const homePlayer = extractPlayerName(game.homeTeam);
+  const awayPlayer = extractPlayerName(game.awayTeam);
+
+  // Determine which team to bet on based on strategy's bet side
+  const homeLeading = game.homeScore > game.awayScore;
+  const leadingTeam = homeLeading ? 'home' : 'away';
+  const leadingPlayer = homeLeading ? homePlayer : awayPlayer;
+  const leadingScore = homeLeading ? game.homeScore : game.awayScore;
+  const trailingScore = homeLeading ? game.awayScore : game.homeScore;
+
+  // Get the current gap
+  const currentGap = Math.abs(game.homeScore - game.awayScore);
+
+  // Determine bet side and required spread from strategy
+  const betSide = strategy.oddsRequirement?.betSide || 'leading_team';
+  const requiredSpread = strategy.oddsRequirement?.value || signal.requiredSpread || -4.5;
+
+  // Determine which team we're betting on
+  let betTeam: string;
+  let betPlayer: string;
+  if (betSide === 'leading_team') {
+    betTeam = leadingTeam === 'home' ? game.homeTeam : game.awayTeam;
+    betPlayer = leadingPlayer;
+  } else if (betSide === 'trailing_team') {
+    betTeam = leadingTeam === 'home' ? game.awayTeam : game.homeTeam;
+    betPlayer = leadingTeam === 'home' ? awayPlayer : homePlayer;
+  } else if (betSide === 'home') {
+    betTeam = game.homeTeam;
+    betPlayer = homePlayer;
+  } else {
+    betTeam = game.awayTeam;
+    betPlayer = awayPlayer;
+  }
+
+  const embed: DiscordEmbed = {
+    title: `🎰 BetSlip Available`,
+    description: `**${strategy.name}**`,
+    color: COLORS.signal,
+    fields: [
+      { name: '👤 Bet On', value: `${betPlayer} (${betTeam.split(' (')[0]})`, inline: false },
+      { name: '🏀 Matchup', value: `${awayPlayer} @ ${homePlayer}`, inline: true },
+      { name: '📊 Score', value: `${game.awayScore} - ${game.homeScore}`, inline: true },
+      { name: '📈 Current Gap', value: `${currentGap} pts`, inline: true },
+      { name: '⏱️ Quarter', value: `Q${game.quarter}`, inline: true },
+      { name: '⏰ Time', value: game.timeRemaining, inline: true },
+      { name: '📉 Spread', value: `${game.spread > 0 ? '+' : ''}${game.spread}`, inline: true },
+      { name: '✅ Required', value: `${requiredSpread} or better`, inline: true },
+    ],
+    footer: { text: `Signal: ${signal.id} | Game: ${game.eventId}` },
+    timestamp: new Date().toISOString(),
+  };
+
+  const message: DiscordMessage = {
+    content: `🚨 **BET AVAILABLE** - ${getTeamEmoji(true)} ${betPlayer}`,
+    embeds: [embed],
+  };
+
+  // Send to all active webhooks for this strategy
+  let sent = 0;
+  const webhooks = [...(strategy.discordWebhooks || [])];
+
+  // Include default webhook if configured
+  const defaultWebhook = process.env.DISCORD_WEBHOOK_URL;
+  if (defaultWebhook && !webhooks.some((w) => w.url === defaultWebhook)) {
+    webhooks.push({ url: defaultWebhook, name: 'Default', isActive: true });
+  }
+
+  for (const webhook of webhooks) {
+    if (webhook.isActive && webhook.url) {
+      const success = await sendWebhookMessage(webhook.url, message);
+      if (success) {
+        sent++;
+        console.log(`✅ Bet Available alert sent to: ${webhook.name}`);
+      }
+    }
+  }
+
+  return sent;
+}
+
+/**
+ * Sends game result alert when game ends
+ * Shows final outcome: WIN/LOSS/PUSH for the bet
+ */
+export async function sendGameResultAlert(
+  signal: Signal,
+  strategy: Strategy,
+  game: LiveGame,
+  result: 'win' | 'loss' | 'push'
+): Promise<number> {
+  const homePlayer = extractPlayerName(game.homeTeam);
+  const awayPlayer = extractPlayerName(game.awayTeam);
+
+  const resultEmoji = result === 'win' ? '✅' : result === 'loss' ? '❌' : '➖';
+  const resultText = result.toUpperCase();
+  const resultColor = COLORS[result];
+
+  // Calculate the actual result
+  const finalHomeScore = game.finalScores?.home || game.homeScore;
+  const finalAwayScore = game.finalScores?.away || game.awayScore;
+  const finalDiff = finalHomeScore - finalAwayScore;
+
+  // Determine which team was bet on
+  const betSide = strategy.oddsRequirement?.betSide || 'leading_team';
+  const leadingAtEntry = signal.leadingTeamAtTrigger || (signal.homeScore > signal.awayScore ? 'home' : 'away');
+
+  let betTeam: string;
+  if (betSide === 'leading_team') {
+    betTeam = leadingAtEntry === 'home' ? game.homeTeam : game.awayTeam;
+  } else if (betSide === 'trailing_team') {
+    betTeam = leadingAtEntry === 'home' ? game.awayTeam : game.homeTeam;
+  } else if (betSide === 'home') {
+    betTeam = game.homeTeam;
+  } else {
+    betTeam = game.awayTeam;
+  }
+
+  const betPlayer = extractPlayerName(betTeam);
+
+  const embed: DiscordEmbed = {
+    title: `${resultEmoji} Game Result: ${resultText}`,
+    description: `**${strategy.name}**`,
+    color: resultColor,
+    fields: [
+      { name: '👤 Bet On', value: betPlayer, inline: true },
+      { name: '🏀 Matchup', value: `${awayPlayer} @ ${homePlayer}`, inline: true },
+      { name: '📊 Final Score', value: `${finalAwayScore} - ${finalHomeScore}`, inline: true },
+      { name: '📈 Entry Score', value: `${signal.awayScore} - ${signal.homeScore}`, inline: true },
+      { name: '⏱️ Entry Time', value: `Q${signal.quarter} ${signal.timeRemaining}`, inline: true },
+      { name: '📉 Entry Spread', value: `${signal.actualSpreadAtEntry || signal.entrySpread || 'N/A'}`, inline: true },
+    ],
+    footer: { text: `Signal: ${signal.id}` },
+    timestamp: new Date().toISOString(),
+  };
+
+  const message: DiscordMessage = {
+    content: `${resultEmoji} **GAME RESULT: ${resultText}** - ${betPlayer}`,
+    embeds: [embed],
+  };
+
+  // Send to all active webhooks
+  let sent = 0;
+  const webhooks = [...(strategy.discordWebhooks || [])];
+
+  const defaultWebhook = process.env.DISCORD_WEBHOOK_URL;
+  if (defaultWebhook && !webhooks.some((w) => w.url === defaultWebhook)) {
+    webhooks.push({ url: defaultWebhook, name: 'Default', isActive: true });
+  }
+
+  for (const webhook of webhooks) {
+    if (webhook.isActive && webhook.url) {
+      const success = await sendWebhookMessage(webhook.url, message);
+      if (success) {
+        sent++;
+        console.log(`✅ Game Result alert sent to: ${webhook.name}`);
+      }
+    }
+  }
+
+  return sent;
 }

@@ -23,6 +23,8 @@ export function createEvaluationContext(game: LiveGame): GameEvaluationContext {
   const firstHalfTotal = quarterScores.q1Home + quarterScores.q1Away + quarterScores.q2Home + quarterScores.q2Away;
   const secondHalfTotal = quarterScores.q3Home + quarterScores.q3Away + quarterScores.q4Home + quarterScores.q4Away;
 
+  const halftimeDifferential = halftimeScores.home - halftimeScores.away;
+
   return {
     // Direct fields
     quarter: game.quarter,
@@ -38,6 +40,13 @@ export function createEvaluationContext(game: LiveGame): GameEvaluationContext {
     spread: game.spread,
     total: game.total,
     status: game.status,
+
+    // =========================================
+    // FIELD ALIASES - Match Airtable trigger format
+    // =========================================
+    // These are the fields used in your Airtable triggers:
+    currentLead: Math.abs(scoreDifferential),         // Alias for absScoreDifferential
+    halftimeLead: Math.abs(halftimeDifferential),     // Absolute halftime lead
 
     // Quarter 1
     q1Home: quarterScores.q1Home,
@@ -67,7 +76,7 @@ export function createEvaluationContext(game: LiveGame): GameEvaluationContext {
     halftimeHome: halftimeScores.home,
     halftimeAway: halftimeScores.away,
     halftimeTotal: halftimeScores.home + halftimeScores.away,
-    halftimeDifferential: halftimeScores.home - halftimeScores.away,
+    halftimeDifferential,
 
     // Half totals
     firstHalfTotal,

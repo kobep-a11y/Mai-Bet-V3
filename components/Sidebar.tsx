@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, Target, Bell, BarChart3, Cog, Zap, TrendingUp } from 'lucide-react';
+import { Activity, Target, Bell, BarChart3, Cog, Zap, TrendingUp, Users } from 'lucide-react';
 
 const navItems = [
   { href: '/', label: 'Live Games', icon: Activity },
   { href: '/strategies', label: 'Strategies', icon: Target },
   { href: '/signals', label: 'Signals', icon: Bell },
+  { href: '/players', label: 'Players', icon: Users },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/settings', label: 'Settings', icon: Cog },
 ];

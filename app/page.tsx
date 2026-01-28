@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Folder, RefreshCw, ChevronDown, Bell, Zap } from 'lucide-react';
 import { LiveGame } from '@/types';
 
-interface GameWithMeta extends LiveGame {
+interface GameWithMeta extends Omit<LiveGame, 'lastUpdate'> {
   createdAt?: string;
   lastUpdate?: string;
 }
@@ -22,32 +22,38 @@ export default function LiveGamesPage() {
     try {
       const res = await fetch('/api/webhook/game-update');
       const data = await res.json();
-      if (data.success) {
-        const newGames: GameWithMeta[] = data.games || [];
-        const newUpdated = new Set<string>();
+      if (data.success && Array.isArray(data.games)) {
+        const newGames: GameWithMeta[] = data.games;
 
-        newGames.forEach(game => {
-          const prev = prevScoresRef.current.get(game.id);
-          if (prev && (prev.home !== game.homeScore || prev.away !== game.awayScore)) {
-            newUpdated.add(game.id);
+        // Only update if we actually got games, or if we had no games before
+        // This prevents flashing when webhook temporarily has no data
+        if (newGames.length > 0 || games.length === 0) {
+          const newUpdated = new Set<string>();
+
+          newGames.forEach(game => {
+            const prev = prevScoresRef.current.get(game.id);
+            if (prev && (prev.home !== game.homeScore || prev.away !== game.awayScore)) {
+              newUpdated.add(game.id);
+            }
+            prevScoresRef.current.set(game.id, { home: game.homeScore, away: game.awayScore });
+          });
+
+          if (newUpdated.size > 0) {
+            setUpdatedGames(newUpdated);
+            setTimeout(() => setUpdatedGames(new Set()), 800);
           }
-          prevScoresRef.current.set(game.id, { home: game.homeScore, away: game.awayScore });
-        });
 
-        if (newUpdated.size > 0) {
-          setUpdatedGames(newUpdated);
-          setTimeout(() => setUpdatedGames(new Set()), 800);
+          setGames(newGames);
+          setLastUpdate(new Date());
         }
-
-        setGames(newGames);
-        setLastUpdate(new Date());
       }
     } catch (error) {
       console.error('Failed to fetch games:', error);
+      // Don't clear games on error - keep showing what we have
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [games.length]);
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
 

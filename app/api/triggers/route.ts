@@ -13,15 +13,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const strategyId = searchParams.get('strategyId');
 
-    const selectOptions: Airtable.SelectOptions<AirtableTriggerFields> = {
-      sort: [{ field: 'Order', direction: 'asc' }],
-    };
-
+    let filterFormula = '';
     if (strategyId) {
-      selectOptions.filterByFormula = `SEARCH("${strategyId}", ARRAYJOIN({Strategy}))`;
+      filterFormula = `SEARCH("${strategyId}", ARRAYJOIN({Strategy}))`;
     }
 
-    const records = await base('Triggers').select(selectOptions).all();
+    const records = await base('Triggers').select({
+      sort: [{ field: 'Order', direction: 'asc' }],
+      ...(filterFormula && { filterByFormula: filterFormula }),
+    }).all();
 
     const triggers: StrategyTrigger[] = records.map((record) => {
       const fields = record.fields as unknown as AirtableTriggerFields;

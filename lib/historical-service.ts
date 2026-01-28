@@ -170,20 +170,11 @@ export async function getHistoricalGames(options?: {
   filterByFormula?: string;
 }): Promise<{ games: HistoricalGame[]; offset?: string }> {
   try {
-    const selectOptions: Airtable.SelectOptions<AirtableHistoricalGameFields> = {
+    const records = await base('Historical Games').select({
       sort: [{ field: 'Game Date', direction: 'desc' }],
       pageSize: options?.limit || 100,
-    };
-
-    if (options?.offset) {
-      // Note: Airtable offset is handled differently
-    }
-
-    if (options?.filterByFormula) {
-      selectOptions.filterByFormula = options.filterByFormula;
-    }
-
-    const records = await base('Historical Games').select(selectOptions).all();
+      ...(options?.filterByFormula && { filterByFormula: options.filterByFormula }),
+    }).all();
 
     const games: HistoricalGame[] = records.map((record) => {
       const fields = record.fields as unknown as AirtableHistoricalGameFields;

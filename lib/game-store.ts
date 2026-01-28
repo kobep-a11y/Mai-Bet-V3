@@ -7,7 +7,7 @@ interface GameWithMeta extends LiveGame {
 
 class GameStore {
   private games: Map<string, GameWithMeta> = new Map();
-  private staleTimeout: number = 20000; // 20 seconds
+  private staleTimeout: number = 120000; // 2 minutes (increased for webhook reliability)
 
   updateGame(id: string, game: LiveGame): void {
     const existing = this.games.get(id);
@@ -73,7 +73,7 @@ class GameStore {
     const now = Date.now();
     let removed = 0;
 
-    for (const [id, game] of this.games.entries()) {
+    for (const [id, game] of Array.from(this.games.entries())) {
       const lastUpdate = new Date(game.lastUpdate).getTime();
       const timeSinceUpdate = now - lastUpdate;
 

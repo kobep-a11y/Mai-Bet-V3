@@ -82,6 +82,10 @@ export type ConditionField =
   | 'awayLeading'
   | 'spread'
   | 'total'
+  // Airtable trigger aliases
+  | 'currentLead'      // Alias for absScoreDifferential
+  | 'halftimeLead'     // Absolute halftime lead
+  // Quarter scores
   | 'q1Home' | 'q1Away' | 'q1Total' | 'q1Differential'
   | 'q2Home' | 'q2Away' | 'q2Total' | 'q2Differential'
   | 'q3Home' | 'q3Away' | 'q3Total' | 'q3Differential'
@@ -120,13 +124,62 @@ export interface Strategy {
   isActive: boolean;
   triggers: StrategyTrigger[];
   discordWebhooks: DiscordWebhook[]; // Multiple webhooks per strategy
+
+  // Odds requirement for two-stage system
+  oddsRequirement?: OddsRequirement;
+
+  // Strategy metadata
+  expiryTimeQ4?: string;  // When to expire (e.g., "2:20" means 2:20 left in Q4)
+  isTwoStage?: boolean;   // Does this strategy have both entry and close triggers?
+
   createdAt: string;
   updatedAt: string;
 }
 
 // ============================================
-// SIGNAL TYPES
+// SIGNAL TYPES - Two-Stage Signal System
 // ============================================
+
+/**
+ * Signal Status Lifecycle:
+ * - monitoring: Entry trigger fired, waiting for close trigger (two-stage strategies)
+ * - watching: All game conditions met, waiting for odds to align
+ * - bet_taken: Odds aligned, entry was available
+ * - expired: Odds never aligned before 2:20 Q4
+ * - won/lost/pushed: Final result after game ends
+ */
+export type SignalStatus =
+  | 'monitoring'    // Entry trigger fired, waiting for close trigger
+  | 'watching'      // Close trigger fired (or one-stage), waiting for odds
+  | 'bet_taken'     // Odds aligned, bet was available
+  | 'expired'       // Odds never aligned before cutoff (2:20 Q4)
+  | 'won'           // Final result: win
+  | 'lost'          // Final result: loss
+  | 'pushed'        // Final result: push
+  | 'closed';       // Manually closed
+
+/**
+ * Bet side - which team to bet on
+ */
+export type BetSide = 'leading_team' | 'trailing_team' | 'home' | 'away';
+
+/**
+ * Odds requirement type
+ * - spread: Bet on spread (actual >= value means easier to cover)
+ * - moneyline: Bet on ML (actual >= value means better payout)
+ * - total_over: Bet over (actual <= value means easier to go over)
+ * - total_under: Bet under (actual >= value means easier to stay under)
+ */
+export type OddsType = 'spread' | 'moneyline' | 'total_over' | 'total_under';
+
+/**
+ * Odds requirement for a strategy
+ */
+export interface OddsRequirement {
+  type: OddsType;
+  value: number; // e.g., -4.5 for spread, +150 for ML, 210.5 for total
+  betSide: BetSide;
+}
 
 export interface Signal {
   id: string;
@@ -142,15 +195,36 @@ export interface Signal {
   awayScore: number;
   quarter: number;
   timeRemaining: string;
+
+  // Two-stage tracking
+  entryTriggerTime?: string;    // When entry trigger fired (stage 1)
+  closeTriggerTime?: string;    // When close trigger fired (stage 2 for two-stage)
+  oddsAlignedTime?: string;     // When odds became available
+  expiryTime?: string;          // When signal expired (if it did)
+
+  // Legacy fields for compatibility
   entryTime: string;
   closeTime?: string;
+
+  // Odds at various stages
   entrySpread?: number;
   entryTotal?: number;
+  entryML?: number;
   closeSpread?: number;
   closeTotal?: number;
+
+  // Required vs actual odds
+  requiredSpread?: number;      // What spread was needed
+  actualSpreadAtEntry?: number; // What spread was when bet taken
+
+  // Leading team tracking
+  leadingTeamAtTrigger?: 'home' | 'away';
+  leadingTeamSpreadAtEntry?: number;
+
+  // Final results
   finalHomeScore?: number;
   finalAwayScore?: number;
-  status: 'active' | 'won' | 'lost' | 'pushed' | 'closed';
+  status: SignalStatus;
   result?: 'win' | 'loss' | 'push';
   profitLoss?: number;
   notes?: string;
@@ -164,6 +238,14 @@ export interface ActiveSignal {
   gameId: string;
   triggeredAt: string;
   awaitingClose: boolean;
+
+  // Two-stage tracking
+  stage: 'monitoring' | 'watching';  // Current stage
+  entryTriggerFired: boolean;        // Has entry trigger fired?
+  closeTriggerFired: boolean;        // Has close trigger fired?
+  leadingTeamAtTrigger?: 'home' | 'away';  // Who was leading when conditions met
+  requiredSpread?: number;           // What spread is needed for this strategy
+  oddsCheckStartTime?: string;       // When we started watching for odds
 }
 
 // ============================================
@@ -194,6 +276,12 @@ export interface GameEvaluationContext {
   spread: number;
   total: number;
   status: string;
+
+  // =========================================
+  // FIELD ALIASES - Match Airtable trigger format
+  // =========================================
+  currentLead: number;      // Alias for absScoreDifferential
+  halftimeLead: number;     // Absolute halftime lead
 
   // Quarter scores
   q1Home: number;
@@ -270,6 +358,74 @@ export interface HistoricalGame {
 }
 
 // ============================================
+// PLAYER TYPES
+// ============================================
+
+export interface Player {
+  id: string;
+  name: string;        // e.g., "KJMR", "HYPER", "EXO"
+  teamName: string;    // e.g., "OKC Thunder"
+  fullTeamName: string; // e.g., "OKC Thunder (KJMR)"
+
+  // Career stats
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+
+  // Scoring stats
+  totalPointsFor: number;
+  totalPointsAgainst: number;
+  avgPointsFor: number;
+  avgPointsAgainst: number;
+  avgMargin: number;
+
+  // Betting stats
+  spreadRecord: { wins: number; losses: number; pushes: number };
+  totalRecord: { overs: number; unders: number; pushes: number };
+  atsWinRate: number;   // Against the spread win rate
+  overRate: number;     // % of games going over
+
+  // Recent form (last 10 games)
+  recentForm: ('W' | 'L')[];
+  streak: { type: 'W' | 'L'; count: number };
+
+  // Metadata
+  isActive: boolean;
+  lastGameDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AirtablePlayerFields {
+  Name: string;
+  'Team Name'?: string;
+  'Full Team Name'?: string;
+  'Games Played'?: number;
+  Wins?: number;
+  Losses?: number;
+  'Win Rate'?: number;
+  'Total Points For'?: number;
+  'Total Points Against'?: number;
+  'Avg Points For'?: number;
+  'Avg Points Against'?: number;
+  'Avg Margin'?: number;
+  'Spread Wins'?: number;
+  'Spread Losses'?: number;
+  'Spread Pushes'?: number;
+  'Total Overs'?: number;
+  'Total Unders'?: number;
+  'Total Pushes'?: number;
+  'ATS Win Rate'?: number;
+  'Over Rate'?: number;
+  'Recent Form'?: string;  // JSON array
+  'Streak Type'?: 'W' | 'L';
+  'Streak Count'?: number;
+  'Is Active'?: boolean;
+  'Last Game Date'?: string;
+}
+
+// ============================================
 // API RESPONSE TYPES
 // ============================================
 
@@ -290,6 +446,13 @@ export interface AirtableStrategyFields {
   'Trigger Mode'?: 'sequential' | 'parallel';
   'Is Active'?: boolean;
   'Discord Webhooks'?: string; // JSON string of DiscordWebhook[]
+
+  // Flexible odds requirement fields
+  'Odds Type'?: OddsType;          // spread, moneyline, total_over, total_under
+  'Odds Value'?: number;           // e.g., -4.5, +150, 210.5
+  'Bet Side'?: BetSide;            // leading_team, trailing_team, home, away
+  'Expiry Time Q4'?: string;       // e.g., "2:20"
+  'Is Two Stage'?: boolean;        // Does strategy have entry + close triggers?
 }
 
 export interface AirtableTriggerFields {
@@ -322,10 +485,20 @@ export interface AirtableSignalFields {
   'Close Total'?: number;
   'Final Home Score'?: number;
   'Final Away Score'?: number;
-  Status?: 'active' | 'won' | 'lost' | 'pushed' | 'closed';
+  Status?: SignalStatus;
   Result?: 'win' | 'loss' | 'push';
   'Profit Loss'?: number;
   Notes?: string;
+
+  // Two-stage tracking fields
+  'Entry Trigger Time'?: string;    // When entry trigger fired
+  'Close Trigger Time'?: string;    // When close trigger fired
+  'Odds Aligned Time'?: string;     // When odds became available
+  'Expiry Time'?: string;           // When signal expired
+  'Required Spread'?: number;       // What spread was needed
+  'Actual Spread At Entry'?: number; // Spread when bet was available
+  'Leading Team At Trigger'?: 'home' | 'away';
+  'Leading Team Spread'?: number;   // Leading team's spread when bet taken
 }
 
 export interface AirtableHistoricalGameFields {

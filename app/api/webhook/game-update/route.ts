@@ -10,113 +10,221 @@ import {
   onCloseTriggerFired,
   checkWatchingSignalsForOdds,
 } from '@/lib/signal-service';
-import { sendSignalAlert, sendBetAvailableAlert, sendGameResultAlert } from '@/lib/discord-service';
+import { sendBetAvailableAlert } from '@/lib/discord-service';
 import { saveHistoricalGame } from '@/lib/historical-service';
+import { upsertGame, getActiveGames, getGame as getGameFromDB } from '@/lib/game-service';
 
 /**
  * Helper to get a value from data with multiple possible field names
+ * Handles trailing spaces in field names (common in webhook data)
  */
 function getField(data: Record<string, unknown>, ...keys: string[]): unknown {
   for (const key of keys) {
+    // Check exact match
     if (data[key] !== undefined && data[key] !== null && data[key] !== '') {
       return data[key];
+    }
+    // Check with trailing space
+    if (data[key + ' '] !== undefined && data[key + ' '] !== null && data[key + ' '] !== '') {
+      return data[key + ' '];
     }
   }
   return undefined;
 }
 
 /**
+ * Convert decimal odds to American odds
+ * Decimal 1.5 → American -200, Decimal 2.5 → American +150
+ */
+function decimalToAmerican(decimal: number): number {
+  if (decimal >= 2) {
+    return Math.round((decimal - 1) * 100);
+  } else {
+    return Math.round(-100 / (decimal - 1));
+  }
+}
+
+/**
+ * Parse score string like "51:49" to { home: 51, away: 49 }
+ */
+function parseScoreString(ss: string): { home: number; away: number } {
+  if (!ss || typeof ss !== 'string') return { home: 0, away: 0 };
+  const parts = ss.split(':');
+  return {
+    home: parseInt(parts[0]) || 0,
+    away: parseInt(parts[1]) || 0,
+  };
+}
+
+/**
+ * Parse time string like "5 - 01:23" to { quarter: 5, minutes: 1, seconds: 23 }
+ * Also handles formats like "Q4 - 02:30" or just "02:30"
+ */
+function parseTimeString(timeStr: string): { quarter: number; minutes: number; seconds: number } {
+  if (!timeStr || typeof timeStr !== 'string') return { quarter: 1, minutes: 12, seconds: 0 };
+
+  // Try format "5 - 01:23" or "Q5 - 01:23"
+  const dashMatch = timeStr.match(/[Q]?(\d+)\s*-\s*(\d+):(\d+)/i);
+  if (dashMatch) {
+    return {
+      quarter: parseInt(dashMatch[1]) || 1,
+      minutes: parseInt(dashMatch[2]) || 0,
+      seconds: parseInt(dashMatch[3]) || 0,
+    };
+  }
+
+  // Try format "01:23" (just time, assume Q1)
+  const timeMatch = timeStr.match(/(\d+):(\d+)/);
+  if (timeMatch) {
+    return {
+      quarter: 1,
+      minutes: parseInt(timeMatch[1]) || 0,
+      seconds: parseInt(timeMatch[2]) || 0,
+    };
+  }
+
+  return { quarter: 1, minutes: 12, seconds: 0 };
+}
+
+/**
+ * Get the first (most recent) entry from an odds array
+ */
+function getFirstOddsEntry(arr: unknown): Record<string, unknown> | null {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  return arr[0] as Record<string, unknown>;
+}
+
+/**
  * Maps N8N/external webhook fields to our LiveGame structure
+ *
+ * N8N data structure:
+ * {
+ *   "Event ID": "11339870",
+ *   "Home Team": "NY Knicks (HOLLOW)",
+ *   "Away Team": "LA Lakers (HOGGY)",
+ *   "Money Line": [{ "home_od": "1.303", "away_od": "3.250", "ss": "51:49", "time_str": "5 - 01:23" }, ...],
+ *   "Spread ": [{ "handicap": "-10.5", "home_od": "1.833", "away_od": "1.833", "ss": "51:49", ... }],
+ *   "Total Points": [{ "handicap": "132.5", "over_od": "1.833", "under_od": "1.833", ... }],
+ * }
  */
 function mapN8NFields(data: Record<string, unknown>): LiveGame {
-  // Debug: Log all field names received (first time only or periodically)
+  // Debug: Log all field names received periodically
   const fieldNames = Object.keys(data);
-  if (Math.random() < 0.05) { // Log ~5% of requests to see field names
+  if (Math.random() < 0.1) {
     console.log('📥 Webhook fields received:', fieldNames.join(', '));
   }
 
+  // Basic fields
   const eventId = String(getField(data, 'Event ID', 'event_id', 'EventID', 'eventId', 'id') || '');
   const homeTeam = String(getField(data, 'Home Team', 'home_team', 'HomeTeam', 'homeTeam') || '');
   const awayTeam = String(getField(data, 'Away Team', 'away_team', 'AwayTeam', 'awayTeam') || '');
   const homeTeamId = String(getField(data, 'Home Team ID', 'Home team ID', 'home_team_id', 'homeTeamId') || '');
-  const awayTeamId = String(getField(data, 'Away Team ID', 'away_team_id', 'awayTeamId') || '');
-  const homeScore = Number(getField(data, 'Home Score ( API )', 'Home Score', 'home_score', 'homeScore', 'HomeScore') || 0);
-  const awayScore = Number(getField(data, 'Away Score ( API )', 'Away Score', 'away_score', 'awayScore', 'AwayScore') || 0);
+  const awayTeamId = String(getField(data, 'Away Team ID', 'Away team ID', 'away_team_id', 'awayTeamId') || '');
+  const league = String(getField(data, 'League', 'league') || 'NBA2K');
 
-  // Quarter scores
-  const q1Home = Number(getField(data, 'Quarter 1 Home', 'Q1 Home', 'q1_home', 'q1Home') || 0);
-  const q1Away = Number(getField(data, 'Quarter 1 Away', 'Q1 Away', 'q1_away', 'q1Away') || 0);
-  const q2Home = Number(getField(data, 'Quarter 2 Home', 'Q2 Home', 'q2_home', 'q2Home') || 0);
-  const q2Away = Number(getField(data, 'Quarter 2 Away', 'Q2 Away', 'q2_away', 'q2Away') || 0);
-  const q3Home = Number(getField(data, 'Quarter 3 Home', 'Q3 Home', 'q3_home', 'q3Home') || 0);
-  const q3Away = Number(getField(data, 'Quarter 3 Away', 'Q3 Away', 'q3_away', 'q3Away') || 0);
-  const q4Home = Number(getField(data, 'Quarter 4 Home', 'Q4 Home', 'q4_home', 'q4Home') || 0);
-  const q4Away = Number(getField(data, 'Quarter 4 Away', 'Q4 Away', 'q4_away', 'q4Away') || 0);
+  // Get odds arrays - look for arrays in the data
+  const moneyLineArr = getField(data, 'Money Line', 'MoneyLine', 'money_line');
+  const spreadArr = getField(data, 'Spread', 'spread', 'Spreads');
+  const totalArr = getField(data, 'Total Points', 'TotalPoints', 'total_points', 'Total', 'Totals');
 
-  const halftimeHome = Number(getField(data, 'Halftime Score Home', 'Halftime Home', 'halftime_home', 'halftimeHome') || 0);
-  const halftimeAway = Number(getField(data, 'Halftime Score Away', 'Halftime Away', 'halftime_away', 'halftimeAway') || 0);
-  const finalHome = Number(getField(data, 'Final Home', 'final_home', 'finalHome') || homeScore);
-  const finalAway = Number(getField(data, 'Final Away', 'final_away', 'finalAway') || awayScore);
+  // Get first entry from each array (most current odds)
+  const mlEntry = getFirstOddsEntry(moneyLineArr);
+  const spreadEntry = getFirstOddsEntry(spreadArr);
+  const totalEntry = getFirstOddsEntry(totalArr);
 
-  const quarter = Number(getField(data, 'Quarter', 'quarter', 'Period', 'period') || 1);
+  // Extract score and time from Money Line entry (or Spread entry as fallback)
+  const oddsEntry = mlEntry || spreadEntry || totalEntry;
 
-  // Time - check for multiple possible field names
-  const timeMinutes = Number(getField(data,
-    'Time Minutes ( API )', 'Time Minutes', 'time_minutes', 'timeMinutes',
-    'Minutes', 'minutes', 'Time_Minutes', 'GameMinutes'
-  ) || 0);
-  const timeSeconds = Number(getField(data,
-    'Time Seconds ( API )', 'Time Seconds', 'time_seconds', 'timeSeconds',
-    'Seconds', 'seconds', 'Time_Seconds', 'GameSeconds'
-  ) || 0);
+  let homeScore = 0;
+  let awayScore = 0;
+  let quarter = 1;
+  let timeMinutes = 12;
+  let timeSeconds = 0;
+
+  if (oddsEntry) {
+    // Parse score from "ss" field: "51:49"
+    const scores = parseScoreString(String(oddsEntry.ss || ''));
+    homeScore = scores.home;
+    awayScore = scores.away;
+
+    // Parse time from "time_str" field: "5 - 01:23"
+    const timeData = parseTimeString(String(oddsEntry.time_str || ''));
+    quarter = timeData.quarter;
+    timeMinutes = timeData.minutes;
+    timeSeconds = timeData.seconds;
+  }
+
+  // Fallback: Check for direct score/time fields (backwards compatibility)
+  if (homeScore === 0 && awayScore === 0) {
+    homeScore = Number(getField(data, 'Home Score ( API )', 'Home Score', 'home_score', 'homeScore') || 0);
+    awayScore = Number(getField(data, 'Away Score ( API )', 'Away Score', 'away_score', 'awayScore') || 0);
+  }
+  if (quarter === 1 && timeMinutes === 12) {
+    quarter = Number(getField(data, 'Quarter', 'quarter', 'Period', 'period') || 1);
+    timeMinutes = Number(getField(data, 'Time Minutes ( API )', 'Time Minutes', 'time_minutes') || 12);
+    timeSeconds = Number(getField(data, 'Time Seconds ( API )', 'Time Seconds', 'time_seconds') || 0);
+  }
+
   const timeRemaining = `${timeMinutes}:${String(timeSeconds).padStart(2, '0')}`;
 
-  // ODDS - Check many possible field name variations
-  const spread = Number(getField(data,
-    'Spread', 'spread', 'Home Spread', 'home_spread', 'HomeSpread',
-    'Point Spread', 'point_spread', 'Line', 'line', 'Handicap', 'handicap'
-  ) ?? -3.5);
+  // Extract odds values - use null when not present (will be preserved from existing data)
+  // These sentinel values indicate "no data received" vs actual odds
+  let spread: number | null = null;
+  let mlHome: number | null = null;
+  let mlAway: number | null = null;
+  let total: number | null = null;
 
-  const mlHome = Number(getField(data,
-    'ML Home', 'ml_home', 'mlHome', 'Home ML', 'home_ml', 'HomeML',
-    'Home Moneyline', 'home_moneyline', 'MoneylineHome'
-  ) ?? -150);
-
-  const mlAway = Number(getField(data,
-    'ML Away', 'ml_away', 'mlAway', 'Away ML', 'away_ml', 'AwayML',
-    'Away Moneyline', 'away_moneyline', 'MoneylineAway'
-  ) ?? 130);
-
-  const total = Number(getField(data,
-    'Total', 'total', 'Over Under', 'over_under', 'OverUnder', 'O/U', 'ou',
-    'Total Points', 'total_points', 'TotalPoints', 'Game Total', 'game_total'
-  ) ?? 185.5);
-
-  // Debug: Log odds values if they're using defaults
-  if (spread === -3.5 && mlHome === -150 && total === 185.5) {
-    console.log('⚠️ Odds using defaults - check field names. Received:',
-      Object.entries(data)
-        .filter(([k]) => k.toLowerCase().includes('spread') ||
-                        k.toLowerCase().includes('ml') ||
-                        k.toLowerCase().includes('total') ||
-                        k.toLowerCase().includes('line') ||
-                        k.toLowerCase().includes('moneyline'))
-        .map(([k, v]) => `${k}=${v}`)
-        .join(', ') || 'No odds fields found'
-    );
+  // Money Line odds (decimal to American)
+  if (mlEntry) {
+    const homeOd = parseFloat(String(mlEntry.home_od || '0'));
+    const awayOd = parseFloat(String(mlEntry.away_od || '0'));
+    if (homeOd > 0) mlHome = decimalToAmerican(homeOd);
+    if (awayOd > 0) mlAway = decimalToAmerican(awayOd);
   }
+
+  // Spread from handicap field
+  if (spreadEntry) {
+    const handicap = parseFloat(String(spreadEntry.handicap || '0'));
+    if (handicap !== 0) spread = handicap;
+  }
+
+  // Total from handicap field in Total Points
+  if (totalEntry) {
+    const totalHandicap = parseFloat(String(totalEntry.handicap || '0'));
+    if (totalHandicap > 0) total = totalHandicap;
+  }
+
+  // Debug log if we have odds data
+  if (mlEntry || spreadEntry || totalEntry) {
+    console.log(`📊 Odds parsed: ML Home=${mlHome}, ML Away=${mlAway}, Spread=${spread}, Total=${total}`);
+  } else {
+    console.log(`⚠️ No odds data in webhook - will preserve existing odds`);
+  }
+
+  // Quarter scores (if available directly)
+  const q1Home = Number(getField(data, 'Quarter 1 Home', 'Q1 Home', 'q1_home') || 0);
+  const q1Away = Number(getField(data, 'Quarter 1 Away', 'Q1 Away', 'q1_away') || 0);
+  const q2Home = Number(getField(data, 'Quarter 2 Home', 'Q2 Home', 'q2_home') || 0);
+  const q2Away = Number(getField(data, 'Quarter 2 Away', 'Q2 Away', 'q2_away') || 0);
+  const q3Home = Number(getField(data, 'Quarter 3 Home', 'Q3 Home', 'q3_home') || 0);
+  const q3Away = Number(getField(data, 'Quarter 3 Away', 'Q3 Away', 'q3_away') || 0);
+  const q4Home = Number(getField(data, 'Quarter 4 Home', 'Q4 Home', 'q4_home') || 0);
+  const q4Away = Number(getField(data, 'Quarter 4 Away', 'Q4 Away', 'q4_away') || 0);
+
+  const halftimeHome = Number(getField(data, 'Halftime Score Home', 'Halftime Home') || 0);
+  const halftimeAway = Number(getField(data, 'Halftime Score Away', 'Halftime Away') || 0);
 
   // Determine game status
   let status: LiveGame['status'] = 'live';
   if (quarter === 0) status = 'scheduled';
   else if (quarter === 2 && timeMinutes === 0 && timeSeconds === 0) status = 'halftime';
+  else if (quarter >= 5) status = 'final'; // 5th period usually means game over for 4-quarter games
   else if (quarter >= 4 && timeMinutes === 0 && timeSeconds === 0) status = 'final';
-  else if (quarter === 5) status = 'final';
 
   return {
     id: eventId,
     eventId,
-    league: String(getField(data, 'League', 'league') || 'NBA2K'),
+    league,
     homeTeam,
     awayTeam,
     homeTeamId,
@@ -128,14 +236,17 @@ function mapN8NFields(data: Record<string, unknown>): LiveGame {
     status,
     quarterScores: { q1Home, q1Away, q2Home, q2Away, q3Home, q3Away, q4Home, q4Away },
     halftimeScores: { home: halftimeHome, away: halftimeAway },
-    finalScores: { home: finalHome, away: finalAway },
-    spread,
-    mlHome,
-    mlAway,
-    total,
+    finalScores: { home: homeScore, away: awayScore },
+    // Use null to indicate "preserve existing" - validateGameData will handle defaults
+    spread: spread as number,
+    mlHome: mlHome as number,
+    mlAway: mlAway as number,
+    total: total as number,
+    // Store whether odds were actually present in this webhook
+    _hasOddsData: !!(mlEntry || spreadEntry || totalEntry),
     lastUpdate: new Date().toISOString(),
     rawData: data,
-  };
+  } as LiveGame;
 }
 
 /**
@@ -177,13 +288,6 @@ async function processGameUpdate(game: LiveGame): Promise<{
       // Close all active signals for this game and send result alerts
       const closedCount = await closeAllSignalsForGame(game);
 
-      // TODO: Send result notifications for each closed signal
-      // const signals = await getSignalsForGame(game.id);
-      // for (const signal of signals.filter(s => s.status === 'bet_taken')) {
-      //   await sendGameResultAlert(signal, game);
-      //   discordAlertsSent++;
-      // }
-
       console.log(`🏁 Game finished: ${game.awayTeam} @ ${game.homeTeam} - Closed ${closedCount} signals`);
       return { triggersFireCount, signalsCreated, closeTriggersProcessed, betsAvailable, discordAlertsSent, historicalSaved };
     }
@@ -216,8 +320,6 @@ async function processGameUpdate(game: LiveGame): Promise<{
         const signal = await createSignal(result, strategy);
         if (signal) {
           signalsCreated++;
-          // Note: We DON'T send Discord alerts for entry triggers
-          // We only alert when bet is actually available (odds align)
         }
       }
 
@@ -257,18 +359,99 @@ async function processGameUpdate(game: LiveGame): Promise<{
 /**
  * Validates game data against existing data to prevent backwards movement
  * Scores, quarters, and time should never go backwards
+ * Also preserves constant data (team names) from existing records
  */
 function validateGameData(newGame: LiveGame, existingGame: LiveGame | undefined): {
   isValid: boolean;
   correctedGame: LiveGame;
   corrections: string[];
 } {
+  // For brand new games, apply defaults for missing odds
   if (!existingGame) {
-    return { isValid: true, correctedGame: newGame, corrections: [] };
+    const correctedGame = { ...newGame };
+    const hasOddsData = (newGame as LiveGame & { _hasOddsData?: boolean })._hasOddsData;
+
+    // Apply defaults for null odds on new games
+    if (!hasOddsData || correctedGame.spread === null || correctedGame.spread === undefined) {
+      correctedGame.spread = -3.5;
+    }
+    if (!hasOddsData || correctedGame.mlHome === null || correctedGame.mlHome === undefined) {
+      correctedGame.mlHome = -150;
+    }
+    if (!hasOddsData || correctedGame.mlAway === null || correctedGame.mlAway === undefined) {
+      correctedGame.mlAway = 130;
+    }
+    if (!hasOddsData || correctedGame.total === null || correctedGame.total === undefined) {
+      correctedGame.total = 185.5;
+    }
+
+    return { isValid: true, correctedGame, corrections: [] };
   }
 
   const corrections: string[] = [];
   const correctedGame = { ...newGame };
+
+  // PRESERVE CONSTANT DATA: Use existing team names if new data is empty
+  // This ensures team/player info persists even when webhook only sends odds
+  if (!newGame.homeTeam && existingGame.homeTeam) {
+    correctedGame.homeTeam = existingGame.homeTeam;
+  }
+  if (!newGame.awayTeam && existingGame.awayTeam) {
+    correctedGame.awayTeam = existingGame.awayTeam;
+  }
+  if (!newGame.homeTeamId && existingGame.homeTeamId) {
+    correctedGame.homeTeamId = existingGame.homeTeamId;
+  }
+  if (!newGame.awayTeamId && existingGame.awayTeamId) {
+    correctedGame.awayTeamId = existingGame.awayTeamId;
+  }
+  if (!newGame.league && existingGame.league) {
+    correctedGame.league = existingGame.league;
+  }
+
+  // PRESERVE ODDS DATA: If webhook didn't include odds, keep existing odds
+  // This prevents default odds from flashing in and potentially false-triggering strategies
+  const hasOddsData = (newGame as LiveGame & { _hasOddsData?: boolean })._hasOddsData;
+
+  if (!hasOddsData) {
+    // No odds in this webhook - preserve all existing odds
+    if (existingGame.spread !== undefined && existingGame.spread !== null) {
+      correctedGame.spread = existingGame.spread;
+    } else {
+      correctedGame.spread = -3.5; // Default only for brand new games
+    }
+    if (existingGame.mlHome !== undefined && existingGame.mlHome !== null) {
+      correctedGame.mlHome = existingGame.mlHome;
+    } else {
+      correctedGame.mlHome = -150;
+    }
+    if (existingGame.mlAway !== undefined && existingGame.mlAway !== null) {
+      correctedGame.mlAway = existingGame.mlAway;
+    } else {
+      correctedGame.mlAway = 130;
+    }
+    if (existingGame.total !== undefined && existingGame.total !== null) {
+      correctedGame.total = existingGame.total;
+    } else {
+      correctedGame.total = 185.5;
+    }
+    console.log(`📊 Preserving existing odds for ${newGame.id}: Spread=${correctedGame.spread}, ML=${correctedGame.mlHome}/${correctedGame.mlAway}, Total=${correctedGame.total}`);
+  } else {
+    // Odds were in webhook but might be null for individual fields
+    // Preserve existing odds for any null values
+    if (newGame.spread === null || newGame.spread === undefined) {
+      correctedGame.spread = existingGame.spread ?? -3.5;
+    }
+    if (newGame.mlHome === null || newGame.mlHome === undefined) {
+      correctedGame.mlHome = existingGame.mlHome ?? -150;
+    }
+    if (newGame.mlAway === null || newGame.mlAway === undefined) {
+      correctedGame.mlAway = existingGame.mlAway ?? 130;
+    }
+    if (newGame.total === null || newGame.total === undefined) {
+      correctedGame.total = existingGame.total ?? 185.5;
+    }
+  }
 
   // Scores should never decrease
   if (newGame.homeScore < existingGame.homeScore) {
@@ -289,45 +472,35 @@ function validateGameData(newGame: LiveGame, existingGame: LiveGame | undefined)
   // Quarter scores should never decrease
   if (newGame.quarterScores.q1Home < existingGame.quarterScores.q1Home) {
     correctedGame.quarterScores.q1Home = existingGame.quarterScores.q1Home;
-    corrections.push('Q1 Home score cannot decrease');
   }
   if (newGame.quarterScores.q1Away < existingGame.quarterScores.q1Away) {
     correctedGame.quarterScores.q1Away = existingGame.quarterScores.q1Away;
-    corrections.push('Q1 Away score cannot decrease');
   }
   if (newGame.quarterScores.q2Home < existingGame.quarterScores.q2Home) {
     correctedGame.quarterScores.q2Home = existingGame.quarterScores.q2Home;
-    corrections.push('Q2 Home score cannot decrease');
   }
   if (newGame.quarterScores.q2Away < existingGame.quarterScores.q2Away) {
     correctedGame.quarterScores.q2Away = existingGame.quarterScores.q2Away;
-    corrections.push('Q2 Away score cannot decrease');
   }
   if (newGame.quarterScores.q3Home < existingGame.quarterScores.q3Home) {
     correctedGame.quarterScores.q3Home = existingGame.quarterScores.q3Home;
-    corrections.push('Q3 Home score cannot decrease');
   }
   if (newGame.quarterScores.q3Away < existingGame.quarterScores.q3Away) {
     correctedGame.quarterScores.q3Away = existingGame.quarterScores.q3Away;
-    corrections.push('Q3 Away score cannot decrease');
   }
   if (newGame.quarterScores.q4Home < existingGame.quarterScores.q4Home) {
     correctedGame.quarterScores.q4Home = existingGame.quarterScores.q4Home;
-    corrections.push('Q4 Home score cannot decrease');
   }
   if (newGame.quarterScores.q4Away < existingGame.quarterScores.q4Away) {
     correctedGame.quarterScores.q4Away = existingGame.quarterScores.q4Away;
-    corrections.push('Q4 Away score cannot decrease');
   }
 
   // Halftime scores should never decrease
   if (newGame.halftimeScores.home < existingGame.halftimeScores.home) {
     correctedGame.halftimeScores.home = existingGame.halftimeScores.home;
-    corrections.push('Halftime Home score cannot decrease');
   }
   if (newGame.halftimeScores.away < existingGame.halftimeScores.away) {
     correctedGame.halftimeScores.away = existingGame.halftimeScores.away;
-    corrections.push('Halftime Away score cannot decrease');
   }
 
   // If we're in the same quarter, time should only go down (or stay same)
@@ -368,12 +541,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing event_id' }, { status: 400 });
     }
 
-    // Get existing game data and validate
-    const existingGame = gameStore.getGame(gameData.id);
+    // Get existing game data and validate (check memory first, then DB)
+    let existingGame = gameStore.getGame(gameData.id);
+    if (!existingGame) {
+      existingGame = await getGameFromDB(gameData.id) || undefined;
+    }
     const { correctedGame, corrections } = validateGameData(gameData, existingGame);
 
-    // Update game store with corrected data
+    // Update both in-memory store AND Airtable for persistence
     gameStore.updateGame(correctedGame.id, correctedGame);
+
+    // Save to Airtable (async, don't block response)
+    upsertGame(correctedGame).catch(err => console.error('Airtable upsert error:', err));
+
     console.log(`Game updated: ${correctedGame.id} - ${correctedGame.homeTeam} vs ${correctedGame.awayTeam} (Q${correctedGame.quarter} ${correctedGame.timeRemaining})${corrections.length > 0 ? ' [CORRECTED]' : ''}`);
 
     // Process triggers, signals, alerts
@@ -408,11 +588,18 @@ export async function PUT(request: NextRequest) {
           return { success: false, error: 'Missing event_id' };
         }
 
-        // Get existing game data and validate
-        const existingGame = gameStore.getGame(gameData.id);
+        // Get existing game data and validate (check memory first, then DB)
+        let existingGame = gameStore.getGame(gameData.id);
+        if (!existingGame) {
+          existingGame = await getGameFromDB(gameData.id) || undefined;
+        }
         const { correctedGame, corrections } = validateGameData(gameData, existingGame);
 
         gameStore.updateGame(correctedGame.id, correctedGame);
+
+        // Save to Airtable (async, don't block)
+        upsertGame(correctedGame).catch(err => console.error('Airtable upsert error:', err));
+
         const processResult = await processGameUpdate(correctedGame);
 
         return {
@@ -451,8 +638,19 @@ export async function PUT(request: NextRequest) {
 
 /**
  * GET - Get all current games
+ * Falls back to Airtable if in-memory store is empty (serverless cold start)
  */
 export async function GET() {
-  const games = gameStore.getAllGames();
+  let games = gameStore.getAllGames();
+
+  // If in-memory store is empty, fetch from Airtable (persistent storage)
+  if (games.length === 0) {
+    console.log('📂 In-memory store empty, fetching from Airtable...');
+    const dbGames = await getActiveGames();
+    // Populate in-memory store with DB games
+    dbGames.forEach(game => gameStore.updateGame(game.id, game));
+    games = dbGames;
+  }
+
   return NextResponse.json({ success: true, count: games.length, games });
 }

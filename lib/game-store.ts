@@ -29,24 +29,13 @@ class GameStore {
     this.removeStaleGames();
 
     return Array.from(this.games.values()).sort((a, b) => {
-      // Sort by: status priority, then by quarter (higher = closer to end), then by time (lower = closer to end)
-      const statusOrder: Record<string, number> = { final: 0, live: 1, halftime: 2, scheduled: 3 };
-      const statusDiff = statusOrder[a.status] - statusOrder[b.status];
+      // Sort by: status priority, then by eventId for STABLE ordering
+      const statusOrder: Record<string, number> = { live: 0, halftime: 1, scheduled: 2, final: 3 };
+      const statusDiff = (statusOrder[a.status] ?? 4) - (statusOrder[b.status] ?? 4);
       if (statusDiff !== 0) return statusDiff;
 
-      // For live games: higher quarter = closer to end (should be at top)
-      if (a.status === 'live' && b.status === 'live') {
-        const quarterDiff = b.quarter - a.quarter;
-        if (quarterDiff !== 0) return quarterDiff;
-
-        // Same quarter: lower time remaining = closer to end (should be at top)
-        const timeA = this.parseTimeRemaining(a.timeRemaining);
-        const timeB = this.parseTimeRemaining(b.timeRemaining);
-        return timeA - timeB;
-      }
-
-      // For scheduled: older created = should be at top
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      // Use eventId for stable ordering (prevents flashing/reordering)
+      return (a.eventId || a.id).localeCompare(b.eventId || b.id);
     });
   }
 

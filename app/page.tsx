@@ -17,6 +17,7 @@ export default function LiveGamesPage() {
 
   const prevScoresRef = useRef<Map<string, { home: number; away: number }>>(new Map());
   const [updatedGames, setUpdatedGames] = useState<Set<string>>(new Set());
+  const hasGamesRef = useRef(false);
 
   const fetchGames = useCallback(async () => {
     try {
@@ -24,26 +25,36 @@ export default function LiveGamesPage() {
       const data = await res.json();
       if (data.success && Array.isArray(data.games)) {
         const newGames: GameWithMeta[] = data.games;
+        const newUpdated = new Set<string>();
 
-        // Only update if we actually got games, or if we had no games before
-        // This prevents flashing when webhook temporarily has no data
-        if (newGames.length > 0 || games.length === 0) {
-          const newUpdated = new Set<string>();
-
-          newGames.forEach(game => {
-            const prev = prevScoresRef.current.get(game.id);
-            if (prev && (prev.home !== game.homeScore || prev.away !== game.awayScore)) {
-              newUpdated.add(game.id);
-            }
-            prevScoresRef.current.set(game.id, { home: game.homeScore, away: game.awayScore });
-          });
-
-          if (newUpdated.size > 0) {
-            setUpdatedGames(newUpdated);
-            setTimeout(() => setUpdatedGames(new Set()), 800);
+        newGames.forEach(game => {
+          const prev = prevScoresRef.current.get(game.id);
+          if (prev && (prev.home !== game.homeScore || prev.away !== game.awayScore)) {
+            newUpdated.add(game.id);
           }
+          prevScoresRef.current.set(game.id, { home: game.homeScore, away: game.awayScore });
+        });
 
-          setGames(newGames);
+        if (newUpdated.size > 0) {
+          setUpdatedGames(newUpdated);
+          setTimeout(() => setUpdatedGames(new Set()), 800);
+        }
+
+        // Only update games if we got data OR if we had no games before
+        // This prevents clearing the display when serverless function returns empty
+        if (newGames.length > 0 || !hasGamesRef.current) {
+          // Sort games consistently by eventId to prevent flashing/reordering
+          const sortedGames = [...newGames].sort((a, b) => {
+            // First sort by status: live > halftime > scheduled > final
+            const statusOrder: Record<string, number> = { live: 0, halftime: 1, scheduled: 2, final: 3 };
+            const statusDiff = (statusOrder[a.status] ?? 4) - (statusOrder[b.status] ?? 4);
+            if (statusDiff !== 0) return statusDiff;
+
+            // Then by eventId for stable ordering
+            return (a.eventId || a.id).localeCompare(b.eventId || b.id);
+          });
+          setGames(sortedGames);
+          hasGamesRef.current = sortedGames.length > 0;
           setLastUpdate(new Date());
         }
       }
@@ -53,7 +64,7 @@ export default function LiveGamesPage() {
     } finally {
       setLoading(false);
     }
-  }, [games.length]);
+  }, []);
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
 

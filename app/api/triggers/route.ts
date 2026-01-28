@@ -1,9 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Airtable from 'airtable';
 import { StrategyTrigger, Condition, AirtableTriggerFields } from '@/types';
 import { clearCache } from '@/lib/strategy-service';
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID || '');
+// Airtable REST API configuration
+// Using REST API instead of SDK to avoid AbortSignal bug on Vercel serverless
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
+
+/**
+ * Helper function to make Airtable REST API requests
+ */
+async function airtableRequest(
+  tableName: string,
+  endpoint: string = '',
+  options: RequestInit = {}
+): Promise<Response> {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}${endpoint}`;
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+}
+
+interface AirtableRecord {
+  id: string;
+  fields: Record<string, unknown>;
+  createdTime?: string;
+}
 
 /**
  * GET - Fetch triggers, optionally filtered by strategyId
@@ -13,21 +41,38 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const strategyId = searchParams.get('strategyId');
 
-    let filterFormula = '';
+    const params = new URLSearchParams();
+    params.append('sort[0][field]', 'Order');
+    params.append('sort[0][direction]', 'asc');
+
     if (strategyId) {
-      filterFormula = `SEARCH("${strategyId}", ARRAYJOIN({Strategy}))`;
+      params.append('filterByFormula', `SEARCH("${strategyId}", ARRAYJOIN({Strategy}))`);
     }
 
-    const records = await base('Triggers').select({
-      sort: [{ field: 'Order', direction: 'asc' }],
-      ...(filterFormula && { filterByFormula: filterFormula }),
-    }).all();
+    // Fetch all records with pagination
+    const allRecords: AirtableRecord[] = [];
+    let offset: string | undefined;
 
-    const triggers: StrategyTrigger[] = records.map((record) => {
+    do {
+      const queryParams = new URLSearchParams(params);
+      if (offset) queryParams.set('offset', offset);
+
+      const response = await airtableRequest('Triggers', `?${queryParams.toString()}`);
+      if (!response.ok) {
+        console.error('Error fetching triggers:', response.status);
+        return NextResponse.json({ success: false, error: 'Failed to fetch triggers' }, { status: 500 });
+      }
+
+      const data = await response.json();
+      allRecords.push(...(data.records || []));
+      offset = data.offset;
+    } while (offset);
+
+    const triggers: StrategyTrigger[] = allRecords.map((record) => {
       const fields = record.fields as unknown as AirtableTriggerFields;
       let conditions: Condition[] = [];
       try {
-        conditions = fields.Conditions ? JSON.parse(fields.Conditions) : [];
+        conditions = fields.Conditions ? JSON.parse(fields.Conditions as string) : [];
       } catch {
         conditions = [];
       }
@@ -96,18 +141,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const record = await base('Triggers').create({
-      Name: name,
-      Strategy: [strategyId],
-      Conditions: JSON.stringify(conditions || []),
-      Order: order || 1,
-      'Entry Or Close': entryOrClose || 'entry',
-    } as Partial<AirtableTriggerFields>);
+    const response = await airtableRequest('Triggers', '', {
+      method: 'POST',
+      body: JSON.stringify({
+        fields: {
+          Name: name,
+          Strategy: [strategyId],
+          Conditions: JSON.stringify(conditions || []),
+          Order: order || 1,
+          'Entry Or Close': entryOrClose || 'entry',
+        },
+      }),
+    });
 
+    if (!response.ok) {
+      console.error('Error creating trigger:', response.status);
+      return NextResponse.json({ success: false, error: 'Failed to create trigger' }, { status: 500 });
+    }
+
+    const record = await response.json();
     const fields = record.fields as unknown as AirtableTriggerFields;
     let parsedConditions: Condition[] = [];
     try {
-      parsedConditions = fields.Conditions ? JSON.parse(fields.Conditions) : [];
+      parsedConditions = fields.Conditions ? JSON.parse(fields.Conditions as string) : [];
     } catch {
       parsedConditions = [];
     }

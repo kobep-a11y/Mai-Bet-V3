@@ -6,12 +6,37 @@ import { sendGameResultAlert } from '@/lib/discord-service';
 import { saveHistoricalGame } from '@/lib/historical-service';
 import { processGameForPlayerStats, extractPlayerName } from '@/lib/player-service';
 import { Signal, LiveGame, Strategy, HistoricalGame } from '@/types';
-import Airtable from 'airtable';
 
-// Initialize Airtable
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
-  process.env.AIRTABLE_BASE_ID || ''
-);
+// Airtable REST API configuration
+// Using REST API instead of SDK to avoid AbortSignal bug on Vercel serverless
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
+
+/**
+ * Helper function to make Airtable REST API requests
+ */
+async function airtableRequest(
+  tableName: string,
+  endpoint: string = '',
+  options: RequestInit = {}
+): Promise<Response> {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}${endpoint}`;
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+}
+
+interface AirtableRecord {
+  id: string;
+  fields: Record<string, unknown>;
+  createdTime?: string;
+}
 
 /**
  * Calculate the result of a bet based on final scores
@@ -112,14 +137,20 @@ function calculateBetResult(
  */
 async function getSignalsNeedingResults(gameId: string): Promise<Signal[]> {
   try {
-    const records = await base('Signals')
-      .select({
-        filterByFormula: `AND({Game ID} = '${gameId}', {Status} = 'bet_taken')`,
-      })
-      .all();
+    const params = new URLSearchParams();
+    params.append('filterByFormula', `AND({Game ID} = '${gameId}', {Status} = 'bet_taken')`);
+
+    const response = await airtableRequest('Signals', `?${params.toString()}`);
+    if (!response.ok) {
+      console.error('Error fetching signals:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const records: AirtableRecord[] = data.records || [];
 
     return records.map((record) => {
-      const fields = record.fields as Record<string, unknown>;
+      const fields = record.fields;
       return {
         id: record.id,
         strategyId: Array.isArray(fields['Strategy']) ? (fields['Strategy'] as string[])[0] : '',
@@ -145,7 +176,7 @@ async function getSignalsNeedingResults(gameId: string): Promise<Signal[]> {
         leadingTeamAtTrigger: fields['Leading Team At Trigger'] as 'home' | 'away' | undefined,
         leadingTeamSpreadAtEntry: fields['Leading Team Spread'] as number | undefined,
         status: (fields['Status'] as Signal['status']) || 'bet_taken',
-        createdAt: (record as unknown as { _rawJson: { createdTime: string } })._rawJson?.createdTime || '',
+        createdAt: record.createdTime || '',
       } as Signal;
     });
   } catch (error) {
@@ -165,15 +196,20 @@ async function updateSignalResult(
   try {
     const finalStatus = result === 'win' ? 'won' : result === 'loss' ? 'lost' : 'pushed';
 
-    await base('Signals').update(signalId, {
-      Status: finalStatus,
-      Result: result,
-      'Final Home Score': game.finalScores?.home || game.homeScore,
-      'Final Away Score': game.finalScores?.away || game.awayScore,
-      Notes: `Game ended. Final: ${game.awayScore}-${game.homeScore}. Result: ${result.toUpperCase()}`,
+    const response = await airtableRequest('Signals', `/${signalId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        fields: {
+          Status: finalStatus,
+          Result: result,
+          'Final Home Score': game.finalScores?.home || game.homeScore,
+          'Final Away Score': game.finalScores?.away || game.awayScore,
+          Notes: `Game ended. Final: ${game.awayScore}-${game.homeScore}. Result: ${result.toUpperCase()}`,
+        },
+      }),
     });
 
-    return true;
+    return response.ok;
   } catch (error) {
     console.error('Error updating signal result:', error);
     return false;

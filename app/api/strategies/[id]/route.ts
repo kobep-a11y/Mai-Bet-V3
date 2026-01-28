@@ -1,9 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Airtable from 'airtable';
 import { Strategy, StrategyTrigger, DiscordWebhook, AirtableStrategyFields, AirtableTriggerFields } from '@/types';
 import { clearCache } from '@/lib/strategy-service';
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID || '');
+// Airtable REST API configuration
+// Using REST API instead of SDK to avoid AbortSignal bug on Vercel serverless
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
+
+/**
+ * Helper function to make Airtable REST API requests
+ */
+async function airtableRequest(
+  tableName: string,
+  endpoint: string = '',
+  options: RequestInit = {}
+): Promise<Response> {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}${endpoint}`;
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+}
+
+interface AirtableRecord {
+  id: string;
+  fields: Record<string, unknown>;
+  createdTime?: string;
+}
 
 export async function GET(
   request: NextRequest,
@@ -11,22 +39,34 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const record = await base('Strategies').find(id);
+
+    // Fetch strategy
+    const strategyResponse = await airtableRequest('Strategies', `/${id}`);
+    if (!strategyResponse.ok) {
+      return NextResponse.json({ success: false, error: 'Strategy not found' }, { status: 404 });
+    }
+
+    const record = await strategyResponse.json();
     const fields = record.fields as unknown as AirtableStrategyFields;
 
     // Fetch triggers for this strategy
-    const triggerRecords = await base('Triggers')
-      .select({
-        filterByFormula: `SEARCH("${id}", ARRAYJOIN({Strategy}))`,
-        sort: [{ field: 'Order', direction: 'asc' }],
-      })
-      .all();
+    const triggerParams = new URLSearchParams();
+    triggerParams.append('filterByFormula', `SEARCH("${id}", ARRAYJOIN({Strategy}))`);
+    triggerParams.append('sort[0][field]', 'Order');
+    triggerParams.append('sort[0][direction]', 'asc');
+
+    const triggerResponse = await airtableRequest('Triggers', `?${triggerParams.toString()}`);
+    let triggerRecords: AirtableRecord[] = [];
+    if (triggerResponse.ok) {
+      const triggerData = await triggerResponse.json();
+      triggerRecords = triggerData.records || [];
+    }
 
     const triggers: StrategyTrigger[] = triggerRecords.map((tr) => {
       const tf = tr.fields as unknown as AirtableTriggerFields;
       let conditions = [];
       try {
-        conditions = tf.Conditions ? JSON.parse(tf.Conditions) : [];
+        conditions = tf.Conditions ? JSON.parse(tf.Conditions as string) : [];
       } catch {
         conditions = [];
       }
@@ -44,7 +84,7 @@ export async function GET(
     let discordWebhooks: DiscordWebhook[] = [];
     if (fields['Discord Webhooks']) {
       try {
-        discordWebhooks = JSON.parse(fields['Discord Webhooks']);
+        discordWebhooks = JSON.parse(fields['Discord Webhooks'] as string);
       } catch {
         discordWebhooks = [];
       }
@@ -58,7 +98,7 @@ export async function GET(
       isActive: fields['Is Active'] || false,
       triggers,
       discordWebhooks,
-      createdAt: (record as unknown as { _rawJson: { createdTime: string } })._rawJson?.createdTime || new Date().toISOString(),
+      createdAt: record.createdTime || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
@@ -86,14 +126,23 @@ export async function PUT(
       updateFields['Discord Webhooks'] = JSON.stringify(body.discordWebhooks);
     }
 
-    const record = await base('Strategies').update(id, updateFields);
+    const response = await airtableRequest('Strategies', `/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ fields: updateFields }),
+    });
+
+    if (!response.ok) {
+      return NextResponse.json({ success: false, error: 'Failed to update strategy' }, { status: 500 });
+    }
+
+    const record = await response.json();
     const fields = record.fields as unknown as AirtableStrategyFields;
 
     // Parse Discord webhooks for response
     let discordWebhooks: DiscordWebhook[] = [];
     if (fields['Discord Webhooks']) {
       try {
-        discordWebhooks = JSON.parse(fields['Discord Webhooks']);
+        discordWebhooks = JSON.parse(fields['Discord Webhooks'] as string);
       } catch {
         discordWebhooks = [];
       }
@@ -134,20 +183,30 @@ export async function DELETE(
     const { id } = await params;
 
     // Delete associated triggers first
-    const triggerRecords = await base('Triggers')
-      .select({ filterByFormula: `SEARCH("${id}", ARRAYJOIN({Strategy}))` })
-      .all();
+    const triggerParams = new URLSearchParams();
+    triggerParams.append('filterByFormula', `SEARCH("${id}", ARRAYJOIN({Strategy}))`);
 
-    if (triggerRecords.length > 0) {
-      const triggerIds = triggerRecords.map((tr) => tr.id);
-      // Delete in batches of 10 (Airtable limit)
-      for (let i = 0; i < triggerIds.length; i += 10) {
-        await base('Triggers').destroy(triggerIds.slice(i, i + 10));
+    const triggerResponse = await airtableRequest('Triggers', `?${triggerParams.toString()}`);
+    if (triggerResponse.ok) {
+      const triggerData = await triggerResponse.json();
+      const triggerRecords: AirtableRecord[] = triggerData.records || [];
+
+      if (triggerRecords.length > 0) {
+        const triggerIds = triggerRecords.map((tr) => tr.id);
+        // Delete in batches of 10 (Airtable limit)
+        for (let i = 0; i < triggerIds.length; i += 10) {
+          const batchIds = triggerIds.slice(i, i + 10);
+          const deleteParams = batchIds.map(id => `records[]=${id}`).join('&');
+          await airtableRequest('Triggers', `?${deleteParams}`, { method: 'DELETE' });
+        }
       }
     }
 
     // Delete the strategy
-    await base('Strategies').destroy(id);
+    const deleteResponse = await airtableRequest('Strategies', `/${id}`, { method: 'DELETE' });
+    if (!deleteResponse.ok) {
+      return NextResponse.json({ success: false, error: 'Failed to delete strategy' }, { status: 500 });
+    }
 
     // Clear cache
     clearCache();

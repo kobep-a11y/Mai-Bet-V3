@@ -1,16 +1,36 @@
-import Airtable from 'airtable';
 import { LiveGame, HistoricalGame, AirtableHistoricalGameFields } from '@/types';
 
-// Initialize Airtable
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
-  process.env.AIRTABLE_BASE_ID || ''
-);
+// Airtable REST API configuration
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
+const TABLE_NAME = 'Historical Games';
 
 // Track which games we've already saved (prevent duplicates)
 const savedGames = new Set<string>();
 
 /**
+ * Helper function to make Airtable REST API requests
+ * This avoids the AbortSignal bug in the Airtable SDK on Vercel
+ */
+async function airtableRequest(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(TABLE_NAME)}${endpoint}`;
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+}
+
+/**
  * Converts a finished LiveGame to a HistoricalGame and saves to Airtable
+ * Uses REST API directly to avoid Airtable SDK AbortSignal bug
  */
 export async function saveHistoricalGame(game: LiveGame): Promise<HistoricalGame | null> {
   // Only save finished games
@@ -22,6 +42,12 @@ export async function saveHistoricalGame(game: LiveGame): Promise<HistoricalGame
   // Check if already saved
   if (savedGames.has(game.id)) {
     console.log(`Game ${game.id} already saved to Airtable`);
+    return null;
+  }
+
+  // Verify credentials
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    console.error('Missing Airtable credentials');
     return null;
   }
 
@@ -55,9 +81,9 @@ export async function saveHistoricalGame(game: LiveGame): Promise<HistoricalGame
       else totalResult = 'push';
     }
 
-    // Create record in Airtable
-    const record = await base('Historical Games').create({
-      Name: game.eventId || game.id,
+    // Build fields object (only include defined values)
+    const fields: Record<string, unknown> = {
+      'Name': game.eventId || game.id,
       'Home Team': game.homeTeam,
       'Away Team': game.awayTeam,
       'Home Team ID': game.homeTeamId,
@@ -76,20 +102,35 @@ export async function saveHistoricalGame(game: LiveGame): Promise<HistoricalGame
       'Q4 Away': quarterScores.q4Away,
       'Total Points': totalPoints,
       'Point Differential': pointDifferential,
-      Winner: winner,
-      Spread: game.spread,
-      Total: game.total,
-      'Spread Result': spreadResult,
-      'Total Result': totalResult,
-      'Game Date': new Date().toISOString(),
+      'Winner': winner,
+      'Game Date': new Date().toISOString().split('T')[0],
       'Raw Data': JSON.stringify(game.rawData || {}),
-    } as Partial<AirtableHistoricalGameFields>);
+    };
+
+    // Only add spread/total fields if they exist
+    if (game.spread !== undefined) fields['Spread'] = game.spread;
+    if (game.total !== undefined) fields['Total'] = game.total;
+    if (spreadResult) fields['Spread Result'] = spreadResult;
+    if (totalResult) fields['Total Result'] = totalResult;
+
+    // Create record via REST API
+    const response = await airtableRequest('', {
+      method: 'POST',
+      body: JSON.stringify({ fields }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error('❌ Airtable API error:', result);
+      return null;
+    }
 
     // Mark as saved
     savedGames.add(game.id);
 
     const historicalGame: HistoricalGame = {
-      id: record.id,
+      id: result.id,
       eventId: game.eventId,
       league: game.league,
       homeTeam: game.homeTeam,
@@ -127,13 +168,18 @@ export async function saveHistoricalGame(game: LiveGame): Promise<HistoricalGame
 }
 
 /**
- * Bulk import historical games
+ * Bulk import historical games via REST API
  */
 export async function bulkImportHistoricalGames(
   games: Partial<AirtableHistoricalGameFields>[]
 ): Promise<{ success: number; failed: number }> {
   let success = 0;
   let failed = 0;
+
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    console.error('Missing Airtable credentials');
+    return { success: 0, failed: games.length };
+  }
 
   // Airtable allows max 10 records per request
   const batchSize = 10;
@@ -142,11 +188,21 @@ export async function bulkImportHistoricalGames(
     const batch = games.slice(i, i + batchSize);
 
     try {
-      await base('Historical Games').create(
-        batch.map((game) => ({ fields: game }))
-      );
-      success += batch.length;
-      console.log(`Imported batch ${Math.floor(i / batchSize) + 1}: ${batch.length} records`);
+      const response = await airtableRequest('', {
+        method: 'POST',
+        body: JSON.stringify({
+          records: batch.map((game) => ({ fields: game })),
+        }),
+      });
+
+      if (response.ok) {
+        success += batch.length;
+        console.log(`Imported batch ${Math.floor(i / batchSize) + 1}: ${batch.length} records`);
+      } else {
+        const error = await response.json();
+        console.error(`Error importing batch ${Math.floor(i / batchSize) + 1}:`, error);
+        failed += batch.length;
+      }
     } catch (error) {
       console.error(`Error importing batch ${Math.floor(i / batchSize) + 1}:`, error);
       failed += batch.length;
@@ -162,22 +218,41 @@ export async function bulkImportHistoricalGames(
 }
 
 /**
- * Get all historical games from Airtable
+ * Get all historical games from Airtable via REST API
  */
 export async function getHistoricalGames(options?: {
   limit?: number;
   offset?: string;
   filterByFormula?: string;
 }): Promise<{ games: HistoricalGame[]; offset?: string }> {
-  try {
-    const records = await base('Historical Games').select({
-      sort: [{ field: 'Game Date', direction: 'desc' }],
-      pageSize: options?.limit || 100,
-      ...(options?.filterByFormula && { filterByFormula: options.filterByFormula }),
-    }).all();
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    console.error('Missing Airtable credentials');
+    return { games: [] };
+  }
 
-    const games: HistoricalGame[] = records.map((record) => {
-      const fields = record.fields as unknown as AirtableHistoricalGameFields;
+  try {
+    // Build query parameters
+    const params = new URLSearchParams();
+    params.append('sort[0][field]', 'Game Date');
+    params.append('sort[0][direction]', 'desc');
+    params.append('pageSize', String(options?.limit || 100));
+    if (options?.filterByFormula) {
+      params.append('filterByFormula', options.filterByFormula);
+    }
+    if (options?.offset) {
+      params.append('offset', options.offset);
+    }
+
+    const response = await airtableRequest(`?${params.toString()}`);
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error('Error fetching historical games:', result);
+      return { games: [] };
+    }
+
+    const games: HistoricalGame[] = result.records.map((record: { id: string; fields: AirtableHistoricalGameFields }) => {
+      const fields = record.fields;
       return {
         id: record.id,
         eventId: fields.Name || '',
@@ -209,7 +284,7 @@ export async function getHistoricalGames(options?: {
       };
     });
 
-    return { games };
+    return { games, offset: result.offset };
   } catch (error) {
     console.error('Error fetching historical games:', error);
     return { games: [] };

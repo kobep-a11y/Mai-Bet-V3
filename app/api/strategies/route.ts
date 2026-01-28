@@ -1,57 +1,77 @@
-// MAI Bets V3 - Strategies API Endpoint
-import { NextResponse } from 'next/server';
-import { getStrategies, getStrategyById, testConnection } from '@/lib/airtable';
+import { NextRequest, NextResponse } from 'next/server';
+import Airtable from 'airtable';
+import { Strategy, AirtableStrategyFields } from '@/types';
 
-export async function GET(request: Request) {
+const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
+  process.env.AIRTABLE_BASE_ID || ''
+);
+
+// GET all strategies
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    const action = searchParams.get('action');
+    const records = await base('Strategies').select().all();
 
-    // Test Airtable connection
-    if (action === 'test') {
-      const connected = await testConnection();
-      return NextResponse.json({
-        success: true,
-        data: { connected },
-        message: connected ? 'Airtable connected' : 'Airtable connection failed',
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    // Get specific strategy
-    if (id) {
-      const strategy = await getStrategyById(id);
-      if (!strategy) {
-        return NextResponse.json(
-          { success: false, error: 'Strategy not found' },
-          { status: 404 }
-        );
-      }
-      return NextResponse.json({
-        success: true,
-        data: strategy,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    // Get all strategies
-    const strategies = await getStrategies();
-
-    return NextResponse.json({
-      success: true,
-      data: strategies,
-      count: strategies.length,
-      timestamp: new Date().toISOString(),
+    const strategies: Strategy[] = records.map((record) => {
+      const fields = record.fields as unknown as AirtableStrategyFields;
+      return {
+        id: record.id,
+        name: fields.Name || '',
+        description: fields.Description || '',
+        triggerMode: fields['Trigger Mode'] || 'sequential',
+        isActive: fields['Is Active'] || false,
+        triggers: [], // Triggers are loaded separately
+        createdAt: (record as unknown as { _rawJson: { createdTime: string } })._rawJson?.createdTime || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
     });
+
+    return NextResponse.json({ success: true, data: strategies });
   } catch (error) {
-    console.error('Strategies API error:', error);
+    console.error('Error fetching strategies:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
-        timestamp: new Date().toISOString(),
-      },
+      { success: false, error: 'Failed to fetch strategies' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST create new strategy
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { name, description, triggerMode, isActive } = body;
+
+    if (!name) {
+      return NextResponse.json(
+        { success: false, error: 'Name is required' },
+        { status: 400 }
+      );
+    }
+
+    const record = await base('Strategies').create({
+      Name: name,
+      Description: description || '',
+      'Trigger Mode': triggerMode || 'sequential',
+      'Is Active': isActive || false,
+    });
+
+    const fields = record.fields as unknown as AirtableStrategyFields;
+    const strategy: Strategy = {
+      id: record.id,
+      name: fields.Name || '',
+      description: fields.Description || '',
+      triggerMode: fields['Trigger Mode'] || 'sequential',
+      isActive: fields['Is Active'] || false,
+      triggers: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    return NextResponse.json({ success: true, data: strategy }, { status: 201 });
+  } catch (error) {
+    console.error('Error creating strategy:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to create strategy' },
       { status: 500 }
     );
   }

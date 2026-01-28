@@ -1,200 +1,164 @@
-// MAI Bets V3 - Webhook Endpoint for N8N Game Updates
 import { NextRequest, NextResponse } from 'next/server';
-import { updateGame, getGame } from '@/lib/game-store';
-import { evaluateStrategiesForGame } from '@/lib/strategy-engine';
-import { saveHistoricalGame } from '@/lib/airtable';
-import type { WebhookGamePayload, LiveGame } from '@/types';
+import { gameStore } from '@/lib/game-store';
+import { LiveGame } from '@/types';
 
-// Simple auth token (set in environment)
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
+// Map N8N field names to our internal structure
+function mapN8NFields(data: Record<string, unknown>): LiveGame {
+  // Core identifiers
+  const eventId = String(data['Event ID'] || data['event_id'] || data['eventId'] || '');
+  const homeTeam = String(data['Home Team'] || data['home_team'] || '');
+  const awayTeam = String(data['Away Team'] || data['away_team'] || '');
+  const homeTeamId = String(data['Home Team ID'] || data['Home team ID'] || data['home_team_id'] || '');
+  const awayTeamId = String(data['Away Team ID'] || data['away_team_id'] || '');
+
+  // Current scores
+  const homeScore = Number(data['Home Score ( API )'] || data['Home Score'] || data['home_score'] || 0);
+  const awayScore = Number(data['Away Score ( API )'] || data['Away Score'] || data['away_score'] || 0);
+
+  // Quarter scores
+  const q1Home = Number(data['Quarter 1 Home'] || data['q1_home'] || 0);
+  const q1Away = Number(data['Quarter 1 Away'] || data['q1_away'] || 0);
+  const q2Home = Number(data['Quarter 2 Home'] || data['q2_home'] || 0);
+  const q2Away = Number(data['Quarter 2 Away'] || data['q2_away'] || 0);
+  const q3Home = Number(data['Quarter 3 Home'] || data['q3_home'] || 0);
+  const q3Away = Number(data['Quarter 3 Away'] || data['q3_away'] || 0);
+  const q4Home = Number(data['Quarter 4 Home'] || data['q4_home'] || 0);
+  const q4Away = Number(data['Quarter 4 Away'] || data['q4_away'] || 0);
+
+  // Halftime scores
+  const halftimeHome = Number(data['Halftime Score Home'] || data['halftime_home'] || 0);
+  const halftimeAway = Number(data['Halftime Score Away'] || data['halftime_away'] || 0);
+
+  // Final scores
+  const finalHome = Number(data['Final Home'] || data['final_home'] || homeScore);
+  const finalAway = Number(data['Final Away'] || data['final_away'] || awayScore);
+
+  // Game state
+  const quarter = Number(data['Quarter'] || data['quarter'] || 1);
+  const timeMinutes = Number(data['Time Minutes ( API )'] || data['Time Minutes'] || data['time_minutes'] || 0);
+  const timeSeconds = Number(data['Time Seconds ( API )'] || data['Time Seconds'] || data['time_seconds'] || 0);
+  const timeRemaining = `${timeMinutes}:${String(timeSeconds).padStart(2, '0')}`;
+
+  // Determine status based on quarter
+  let status: LiveGame['status'] = 'live';
+  if (quarter === 0) status = 'scheduled';
+  else if (quarter === 2 && timeMinutes === 0 && timeSeconds === 0) status = 'halftime';
+  else if (quarter >= 4 && timeMinutes === 0 && timeSeconds === 0) status = 'final';
+  else if (quarter === 5) status = 'final'; // OT finished indicator
+
+  // Betting lines (defaults if not provided)
+  const spread = Number(data['Spread'] || data['spread'] || -3.5);
+  const mlHome = Number(data['ML Home'] || data['ml_home'] || -150);
+  const mlAway = Number(data['ML Away'] || data['ml_away'] || 130);
+  const total = Number(data['Total'] || data['total'] || 185.5);
+
+  const league = String(data['League'] || data['league'] || 'NBA2K');
+
+  return {
+    id: eventId,
+    eventId: eventId,
+    league,
+    homeTeam,
+    awayTeam,
+    homeTeamId,
+    awayTeamId,
+    homeScore,
+    awayScore,
+    quarter,
+    timeRemaining,
+    status,
+    quarterScores: {
+      q1Home,
+      q1Away,
+      q2Home,
+      q2Away,
+      q3Home,
+      q3Away,
+      q4Home,
+      q4Away,
+    },
+    halftimeScores: {
+      home: halftimeHome,
+      away: halftimeAway,
+    },
+    finalScores: {
+      home: finalHome,
+      away: finalAway,
+    },
+    spread,
+    mlHome,
+    mlAway,
+    total,
+    lastUpdate: new Date().toISOString(),
+    rawData: data,
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify webhook secret if configured
-    if (WEBHOOK_SECRET) {
-      const authHeader = request.headers.get('authorization');
-      const token = authHeader?.replace('Bearer ', '');
+    const data = await request.json();
+    const gameData = mapN8NFields(data);
 
-      if (token !== WEBHOOK_SECRET) {
-        return NextResponse.json(
-          { success: false, error: 'Unauthorized' },
-          { status: 401 }
-        );
-      }
-    }
-
-    // Parse the incoming payload
-    const payload: WebhookGamePayload = await request.json();
-
-    // Validate required fields
-    if (!payload.event_id) {
+    if (!gameData.id) {
       return NextResponse.json(
         { success: false, error: 'Missing event_id' },
         { status: 400 }
       );
     }
 
-    // Get existing game for comparison
-    const existingGame = getGame(payload.event_id);
-    const wasLive = existingGame?.status === 'live' || existingGame?.status === 'halftime';
+    // Store the game
+    gameStore.updateGame(gameData.id, gameData);
 
-    // Update the game in memory
-    const game = updateGame({
-      event_id: payload.event_id,
-      league: payload.league,
-      home_team: payload.home_team,
-      away_team: payload.away_team,
-      home_score: payload.home_score,
-      away_score: payload.away_score,
-      quarter: payload.quarter,
-      time_remaining: payload.time_remaining,
-      status: payload.status,
-      spread_home: payload.odds?.spread_home,
-      spread_away: payload.odds?.spread_away,
-      moneyline_home: payload.odds?.moneyline_home,
-      moneyline_away: payload.odds?.moneyline_away,
-      total_line: payload.odds?.total_line,
-    });
-
-    // Evaluate strategies for this game
-    await evaluateStrategiesForGame(game);
-
-    // If game just finished, save to historical data
-    if (game.status === 'finished' && wasLive) {
-      await saveHistoricalGame({
-        event_id: game.event_id,
-        league: game.league,
-        home_team: game.home_team,
-        away_team: game.away_team,
-        final_home_score: game.home_score,
-        final_away_score: game.away_score,
-        halftime_home_score: game.halftime_home_score || 0,
-        halftime_away_score: game.halftime_away_score || 0,
-        opening_spread_home: existingGame?.spread_home || game.spread_home,
-        opening_moneyline_home: existingGame?.moneyline_home || game.moneyline_home,
-        opening_moneyline_away: existingGame?.moneyline_away || game.moneyline_away,
-        opening_total: existingGame?.total_line || game.total_line,
-        game_date: new Date().toISOString().split('T')[0],
-      });
-    }
+    console.log(`Game updated: ${gameData.id} - ${gameData.homeTeam} vs ${gameData.awayTeam} | Q${gameData.quarter} ${gameData.timeRemaining} | ${gameData.homeScore}-${gameData.awayScore}`);
 
     return NextResponse.json({
       success: true,
-      data: {
-        event_id: game.event_id,
-        status: game.status,
-        score: `${game.home_score}-${game.away_score}`,
-        quarter: game.quarter,
-        updated_at: game.updated_at,
-      },
-      timestamp: new Date().toISOString(),
+      message: 'Game updated',
+      gameId: gameData.id,
+      game: gameData
     });
   } catch (error) {
     console.error('Webhook error:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500 }
+      { success: false, error: 'Invalid request body' },
+      { status: 400 }
     );
   }
 }
 
-// Batch update endpoint
 export async function PUT(request: NextRequest) {
   try {
-    // Verify webhook secret if configured
-    if (WEBHOOK_SECRET) {
-      const authHeader = request.headers.get('authorization');
-      const token = authHeader?.replace('Bearer ', '');
+    const data = await request.json();
+    const games = Array.isArray(data) ? data : [data];
 
-      if (token !== WEBHOOK_SECRET) {
-        return NextResponse.json(
-          { success: false, error: 'Unauthorized' },
-          { status: 401 }
-        );
+    const results = games.map(game => {
+      const gameData = mapN8NFields(game);
+      if (gameData.id) {
+        gameStore.updateGame(gameData.id, gameData);
+        return { id: gameData.id, success: true };
       }
-    }
-
-    const { games }: { games: WebhookGamePayload[] } = await request.json();
-
-    if (!Array.isArray(games)) {
-      return NextResponse.json(
-        { success: false, error: 'Expected games array' },
-        { status: 400 }
-      );
-    }
-
-    const results: { event_id: string; success: boolean; error?: string }[] = [];
-
-    for (const payload of games) {
-      try {
-        if (!payload.event_id) {
-          results.push({ event_id: 'unknown', success: false, error: 'Missing event_id' });
-          continue;
-        }
-
-        const game = updateGame({
-          event_id: payload.event_id,
-          league: payload.league,
-          home_team: payload.home_team,
-          away_team: payload.away_team,
-          home_score: payload.home_score,
-          away_score: payload.away_score,
-          quarter: payload.quarter,
-          time_remaining: payload.time_remaining,
-          status: payload.status,
-          spread_home: payload.odds?.spread_home,
-          spread_away: payload.odds?.spread_away,
-          moneyline_home: payload.odds?.moneyline_home,
-          moneyline_away: payload.odds?.moneyline_away,
-          total_line: payload.odds?.total_line,
-        });
-
-        // Evaluate strategies
-        await evaluateStrategiesForGame(game);
-
-        results.push({ event_id: payload.event_id, success: true });
-      } catch (err) {
-        results.push({
-          event_id: payload.event_id || 'unknown',
-          success: false,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        });
-      }
-    }
+      return { success: false, error: 'Missing event_id' };
+    });
 
     return NextResponse.json({
       success: true,
-      data: {
-        total: games.length,
-        successful: results.filter(r => r.success).length,
-        failed: results.filter(r => !r.success).length,
-        results,
-      },
-      timestamp: new Date().toISOString(),
+      message: `${results.length} games updated`,
+      results
     });
   } catch (error) {
     console.error('Batch webhook error:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500 }
+      { success: false, error: 'Invalid request body' },
+      { status: 400 }
     );
   }
 }
 
-// Health check
 export async function GET() {
+  const games = gameStore.getAllGames();
   return NextResponse.json({
     success: true,
-    message: 'MAI Bets V3 Webhook Endpoint',
-    version: '3.0.0',
-    timestamp: new Date().toISOString(),
+    count: games.length,
+    games
   });
 }

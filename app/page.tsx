@@ -1,59 +1,45 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Activity, RefreshCw, Plus, Trash2 } from 'lucide-react';
-import GameCard from '@/components/GameCard';
-import type { LiveGame } from '@/types';
-
-interface GamesResponse {
-  success: boolean;
-  data: {
-    games: LiveGame[];
-    stats: {
-      total: number;
-      live: number;
-      halftime: number;
-      scheduled: number;
-      finished: number;
-    };
-  };
-  timestamp: string;
-}
+import { useState, useEffect, useCallback } from 'react';
+import { Activity, RefreshCw, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { LiveGame } from '@/types';
 
 export default function LiveGamesPage() {
   const [games, setGames] = useState<LiveGame[]>([]);
-  const [stats, setStats] = useState({
-    total: 0,
-    live: 0,
-    halftime: 0,
-    scheduled: 0,
-    finished: 0,
-  });
   const [loading, setLoading] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState<string>('');
-  const [filter, setFilter] = useState<'all' | 'live'>('all');
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [filter, setFilter] = useState<'all' | 'live'>('all');
+  const [expandedGame, setExpandedGame] = useState<string | null>(null);
 
-  const fetchGames = async () => {
+  const fetchGames = useCallback(async () => {
     try {
-      const response = await fetch(`/api/games?filter=${filter}`);
-      const data: GamesResponse = await response.json();
-
+      const res = await fetch('/api/webhook/game-update');
+      const data = await res.json();
       if (data.success) {
-        setGames(data.data.games);
-        setStats(data.data.stats);
-        setLastUpdate(new Date(data.timestamp).toLocaleTimeString());
+        setGames(data.games || []);
+        setLastUpdate(new Date());
       }
     } catch (error) {
       console.error('Failed to fetch games:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchGames();
+  }, [fetchGames]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(fetchGames, 5000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, fetchGames]);
 
   const addDemoGame = async () => {
     try {
-      await fetch('/api/games?action=demo');
+      await fetch('/api/games/demo', { method: 'POST' });
       fetchGames();
     } catch (error) {
       console.error('Failed to add demo game:', error);
@@ -62,121 +48,120 @@ export default function LiveGamesPage() {
 
   const clearFinished = async () => {
     try {
-      await fetch('/api/games?action=clear');
+      await fetch('/api/games/clear-finished', { method: 'POST' });
       fetchGames();
     } catch (error) {
       console.error('Failed to clear games:', error);
     }
   };
 
-  useEffect(() => {
-    fetchGames();
+  const filteredGames = filter === 'live'
+    ? games.filter(g => g.status === 'live' || g.status === 'halftime')
+    : games;
 
-    // Auto-refresh every 2 seconds if enabled
-    if (autoRefresh) {
-      const interval = setInterval(fetchGames, 2000);
-      return () => clearInterval(interval);
+  const stats = {
+    total: games.length,
+    live: games.filter(g => g.status === 'live').length,
+    halftime: games.filter(g => g.status === 'halftime').length,
+    scheduled: games.filter(g => g.status === 'scheduled').length,
+    finished: games.filter(g => g.status === 'final').length,
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'live': return 'bg-green-500';
+      case 'halftime': return 'bg-yellow-500';
+      case 'scheduled': return 'bg-blue-500';
+      case 'final': return 'bg-gray-500';
+      default: return 'bg-gray-500';
     }
-  }, [filter, autoRefresh]);
+  };
+
+  const getLead = (game: LiveGame) => {
+    const diff = game.homeScore - game.awayScore;
+    if (diff === 0) return { team: 'TIE', amount: 0 };
+    if (diff > 0) return { team: game.homeTeam.split(' ')[0], amount: diff };
+    return { team: game.awayTeam.split(' ')[0], amount: Math.abs(diff) };
+  };
 
   return (
-    <div>
+    <div className="p-6 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <Activity className="w-8 h-8 text-mai-500" />
-            Live Games
-          </h1>
-          <p className="text-gray-400 mt-1">
-            Real-time game tracking • Last update: {lastUpdate || 'Loading...'}
-          </p>
-        </div>
-
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          {/* Auto Refresh Toggle */}
+          <Activity className="w-8 h-8 text-green-400" />
+          <div>
+            <h1 className="text-2xl font-bold">Live Games</h1>
+            <p className="text-gray-400 text-sm">
+              Real-time game tracking • Last update: {lastUpdate.toLocaleTimeString()}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              autoRefresh
-                ? 'bg-green-500/20 text-green-400 border border-green-500/50'
-                : 'bg-gray-700 text-gray-400 border border-gray-600'
+            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              autoRefresh ? 'bg-green-500/20 text-green-400' : 'bg-gray-700 text-gray-400'
             }`}
           >
-            {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
+            Auto-refresh {autoRefresh ? 'ON' : 'OFF'}
           </button>
-
-          {/* Manual Refresh */}
           <button
             onClick={fetchGames}
-            className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors"
-            title="Refresh"
+            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
           >
-            <RefreshCw className="w-5 h-5 text-gray-300" />
+            <RefreshCw className="w-5 h-5" />
           </button>
         </div>
       </div>
 
-      {/* Stats Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
-        <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
-          <p className="text-xs text-gray-500">Total</p>
-          <p className="text-2xl font-bold text-white">{stats.total}</p>
-        </div>
-        <div className="bg-gray-800/50 rounded-lg p-3 border border-green-500/30">
-          <p className="text-xs text-gray-500">Live</p>
-          <p className="text-2xl font-bold text-green-400">{stats.live}</p>
-        </div>
-        <div className="bg-gray-800/50 rounded-lg p-3 border border-yellow-500/30">
-          <p className="text-xs text-gray-500">Halftime</p>
-          <p className="text-2xl font-bold text-yellow-400">{stats.halftime}</p>
-        </div>
-        <div className="bg-gray-800/50 rounded-lg p-3 border border-blue-500/30">
-          <p className="text-xs text-gray-500">Scheduled</p>
-          <p className="text-2xl font-bold text-blue-400">{stats.scheduled}</p>
-        </div>
-        <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-600">
-          <p className="text-xs text-gray-500">Finished</p>
-          <p className="text-2xl font-bold text-gray-400">{stats.finished}</p>
-        </div>
+      {/* Stats */}
+      <div className="grid grid-cols-5 gap-4 mb-6">
+        {[
+          { label: 'Total', value: stats.total, color: 'text-white' },
+          { label: 'Live', value: stats.live, color: 'text-green-400' },
+          { label: 'Halftime', value: stats.halftime, color: 'text-yellow-400' },
+          { label: 'Scheduled', value: stats.scheduled, color: 'text-blue-400' },
+          { label: 'Finished', value: stats.finished, color: 'text-gray-400' },
+        ].map((stat) => (
+          <div key={stat.label} className="bg-gray-800/50 rounded-lg p-4">
+            <p className="text-xs text-gray-400 uppercase">{stat.label}</p>
+            <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+          </div>
+        ))}
       </div>
 
-      {/* Filter & Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      {/* Filters & Actions */}
+      <div className="flex items-center justify-between mb-4">
         <div className="flex gap-2">
           <button
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === 'all'
-                ? 'bg-mai-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            className={`px-4 py-2 rounded-lg transition-colors ${
+              filter === 'all' ? 'bg-gray-700' : 'hover:bg-gray-700/50'
             }`}
           >
             All Games
           </button>
           <button
             onClick={() => setFilter('live')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === 'live'
-                ? 'bg-mai-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            className={`px-4 py-2 rounded-lg transition-colors ${
+              filter === 'live' ? 'bg-gray-700' : 'hover:bg-gray-700/50'
             }`}
           >
             Live Only
           </button>
         </div>
-
         <div className="flex gap-2">
           <button
             onClick={addDemoGame}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm"
+            className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
             Add Demo
           </button>
           <button
             onClick={clearFinished}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm"
+            className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
           >
             <Trash2 className="w-4 h-4" />
             Clear Finished
@@ -184,44 +169,148 @@ export default function LiveGamesPage() {
         </div>
       </div>
 
-      {/* Games Grid */}
+      {/* Games List */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-mai-500" />
+        <div className="text-center py-12">
+          <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mx-auto"></div>
         </div>
-      ) : games.length === 0 ? (
-        <div className="text-center py-20">
-          <Activity className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-400 mb-2">
-            No games found
-          </h3>
-          <p className="text-gray-500 mb-4">
-            Games will appear here when N8N sends webhook updates
-          </p>
+      ) : filteredGames.length === 0 ? (
+        <div className="text-center py-12 bg-gray-800/50 rounded-xl">
+          <Activity className="w-16 h-16 mx-auto text-gray-600 mb-4" />
+          <h3 className="text-xl font-semibold mb-2">No games found</h3>
+          <p className="text-gray-400 mb-4">Games will appear here when N8N sends webhook updates</p>
           <button
             onClick={addDemoGame}
-            className="px-4 py-2 rounded-lg bg-mai-500 text-white hover:bg-mai-600 transition-colors"
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
           >
             Add Demo Game
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {games.map((game) => (
-            <GameCard key={game.event_id} game={game} />
-          ))}
+        <div className="space-y-4">
+          {filteredGames.map((game) => {
+            const lead = getLead(game);
+            const isExpanded = expandedGame === game.id;
+
+            return (
+              <div
+                key={game.id}
+                className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden"
+              >
+                {/* Main Game Info */}
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{game.league}</span>
+                      <span className={`w-2 h-2 rounded-full ${getStatusColor(game.status)}`}></span>
+                      <span className="text-sm">Q{game.quarter} - {game.timeRemaining}</span>
+                    </div>
+                    <button
+                      onClick={() => setExpandedGame(isExpanded ? null : game.id)}
+                      className="p-1 hover:bg-gray-700 rounded transition-colors"
+                    >
+                      {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 items-center">
+                    {/* Home Team */}
+                    <div className="text-right">
+                      <p className="font-semibold">{game.homeTeam}</p>
+                      <p className="text-3xl font-bold">{game.homeScore}</p>
+                    </div>
+
+                    {/* VS / Lead */}
+                    <div className="text-center">
+                      <p className="text-gray-500 text-sm mb-1">VS</p>
+                      <p className={`text-sm font-medium ${
+                        lead.amount === 0 ? 'text-gray-400' : 'text-green-400'
+                      }`}>
+                        {lead.amount === 0 ? 'TIE' : `${lead.team} +${lead.amount}`}
+                      </p>
+                    </div>
+
+                    {/* Away Team */}
+                    <div className="text-left">
+                      <p className="font-semibold">{game.awayTeam}</p>
+                      <p className="text-3xl font-bold">{game.awayScore}</p>
+                    </div>
+                  </div>
+
+                  {/* Betting Lines */}
+                  <div className="flex justify-center gap-6 mt-4 text-sm text-gray-400">
+                    <span>Spread: {game.spread > 0 ? '+' : ''}{game.spread}</span>
+                    <span>ML: {game.mlHome}</span>
+                    <span>Total: {game.total}</span>
+                  </div>
+                </div>
+
+                {/* Expanded Quarter Details */}
+                {isExpanded && game.quarterScores && (
+                  <div className="border-t border-gray-700 p-4 bg-gray-900/50">
+                    <h4 className="text-sm font-medium text-gray-400 mb-3">Quarter Breakdown</h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-gray-400">
+                            <th className="text-left py-2 pr-4">Team</th>
+                            <th className="text-center px-3">Q1</th>
+                            <th className="text-center px-3">Q2</th>
+                            <th className="text-center px-3 bg-yellow-500/10">Half</th>
+                            <th className="text-center px-3">Q3</th>
+                            <th className="text-center px-3">Q4</th>
+                            <th className="text-center px-3 bg-green-500/10">Final</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td className="py-2 pr-4 font-medium">{game.homeTeam.split(' ')[0]}</td>
+                            <td className="text-center px-3">{game.quarterScores.q1Home}</td>
+                            <td className="text-center px-3">{game.quarterScores.q2Home}</td>
+                            <td className="text-center px-3 bg-yellow-500/10 font-medium">{game.halftimeScores?.home || '-'}</td>
+                            <td className="text-center px-3">{game.quarterScores.q3Home}</td>
+                            <td className="text-center px-3">{game.quarterScores.q4Home}</td>
+                            <td className="text-center px-3 bg-green-500/10 font-bold">{game.finalScores?.home || game.homeScore}</td>
+                          </tr>
+                          <tr>
+                            <td className="py-2 pr-4 font-medium">{game.awayTeam.split(' ')[0]}</td>
+                            <td className="text-center px-3">{game.quarterScores.q1Away}</td>
+                            <td className="text-center px-3">{game.quarterScores.q2Away}</td>
+                            <td className="text-center px-3 bg-yellow-500/10 font-medium">{game.halftimeScores?.away || '-'}</td>
+                            <td className="text-center px-3">{game.quarterScores.q3Away}</td>
+                            <td className="text-center px-3">{game.quarterScores.q4Away}</td>
+                            <td className="text-center px-3 bg-green-500/10 font-bold">{game.finalScores?.away || game.awayScore}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Additional Info */}
+                    <div className="mt-4 pt-4 border-t border-gray-700 grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-400">Event ID</p>
+                        <p className="font-mono">{game.eventId || game.id}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400">Team IDs</p>
+                        <p className="font-mono text-xs">H: {game.homeTeamId || 'N/A'} | A: {game.awayTeamId || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
       {/* Webhook Info */}
-      <div className="mt-8 p-4 bg-gray-800/30 rounded-lg border border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-300 mb-2">
-          📡 Webhook Endpoint
-        </h3>
-        <code className="text-xs text-mai-400 bg-gray-900 px-2 py-1 rounded">
+      <div className="mt-8 bg-gray-800/50 rounded-xl p-4">
+        <h3 className="font-medium mb-2">📡 Webhook Endpoint</h3>
+        <code className="block bg-gray-900 p-3 rounded-lg text-sm text-green-400">
           POST /api/webhook/game-update
         </code>
-        <p className="text-xs text-gray-500 mt-2">
+        <p className="text-xs text-gray-400 mt-2">
           Configure N8N to send game updates to this endpoint. See deployment docs for full setup.
         </p>
       </div>

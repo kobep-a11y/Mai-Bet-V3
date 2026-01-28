@@ -12,7 +12,7 @@ import {
 } from '@/lib/signal-service';
 import { sendBetAvailableAlert } from '@/lib/discord-service';
 import { saveHistoricalGame } from '@/lib/historical-service';
-import { upsertGame, getActiveGames, getGame as getGameFromDB } from '@/lib/game-service';
+import { upsertGame, getActiveGames, getGame as getGameFromDB, deleteGame as deleteGameFromDB } from '@/lib/game-service';
 
 /**
  * Helper to get a value from data with multiple possible field names
@@ -278,7 +278,7 @@ async function processGameUpdate(game: LiveGame): Promise<{
     const strategies = await getActiveStrategies();
 
     // =========================================
-    // GAME FINISHED - Save to historical, calculate results
+    // GAME FINISHED - Save to historical, calculate results, then REMOVE from live
     // =========================================
     if (game.status === 'final') {
       // Save to historical games
@@ -288,7 +288,14 @@ async function processGameUpdate(game: LiveGame): Promise<{
       // Close all active signals for this game and send result alerts
       const closedCount = await closeAllSignalsForGame(game);
 
-      console.log(`🏁 Game finished: ${game.awayTeam} @ ${game.homeTeam} - Closed ${closedCount} signals`);
+      // REMOVE from live games - final games belong in Historical Games only
+      // 1. Remove from in-memory store
+      gameStore.removeGame(game.id);
+      // 2. Remove from Airtable Active Games table (async, don't block)
+      deleteGameFromDB(game.eventId).catch(err => console.error('Error deleting game from Airtable:', err));
+
+      console.log(`🏁 Game finished & removed: ${game.awayTeam} @ ${game.homeTeam} - Closed ${closedCount} signals, Historical: ${historicalSaved}`);
+
       return { triggersFireCount, signalsCreated, closeTriggersProcessed, betsAvailable, discordAlertsSent, historicalSaved };
     }
 

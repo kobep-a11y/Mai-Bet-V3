@@ -243,6 +243,31 @@ export async function markGameFinished(eventId: string): Promise<void> {
 }
 
 /**
+ * Delete a specific game from Active Games table (after saving to Historical)
+ */
+export async function deleteGame(eventId: string): Promise<boolean> {
+  try {
+    const records = await base(GAMES_TABLE)
+      .select({
+        filterByFormula: `{Event ID} = '${eventId}'`,
+        maxRecords: 1,
+      })
+      .firstPage();
+
+    if (records.length > 0) {
+      await base(GAMES_TABLE).destroy([records[0].id]);
+      gamesCache.delete(eventId);
+      console.log(`🗑️ Deleted game ${eventId} from Active Games table`);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error deleting game from Airtable:', error);
+    return false;
+  }
+}
+
+/**
  * Clean up old games (games that ended more than 1 hour ago)
  */
 export async function cleanupOldGames(): Promise<number> {

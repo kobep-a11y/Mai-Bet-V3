@@ -43,13 +43,17 @@ export default function LiveGamesPage() {
         // Only update games if we got data OR if we had no games before
         // This prevents clearing the display when serverless function returns empty
         if (newGames.length > 0 || !hasGamesRef.current) {
-          // Filter out pre-live games (Q1 12:00 with 0-0 score - game hasn't actually started)
-          // and scheduled games - only show games that have actual action
+          // Filter out:
+          // - Final games (should only show in Historical Games table)
+          // - Pre-live games (Q1 12:00 with 0-0 score - game hasn't actually started)
+          // - Scheduled games - only show games that have actual action
           const activeGames = newGames.filter((game) => {
-            // Always show games with any score
-            if (game.homeScore > 0 || game.awayScore > 0) return true;
+            // ALWAYS filter out final games - they belong in Historical Games
+            if (game.status === 'final') return false;
             // Filter out scheduled games
             if (game.status === 'scheduled') return false;
+            // Always show games with any score (live/halftime)
+            if (game.homeScore > 0 || game.awayScore > 0) return true;
             // Filter out Q1 12:00 games (not started)
             if (game.quarter === 1 && game.timeRemaining === '12:00') return false;
             // Show all other games (including 0-0 games that have started)

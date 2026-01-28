@@ -7,9 +7,16 @@
 
 ---
 
-## Progress Update (v1.1)
+## Progress Update (v1.2)
 
-### Completed Today:
+### Completed Today (Latest):
+- ✅ Fixed Airtable SDK AbortSignal bug - migrated historical-service.ts to REST API
+- ✅ Fixed Historical Games field name issues (trailing spaces)
+- ✅ Fixed Winner field options (lowercase: home, away, tie)
+- ✅ Historical Games now saving correctly to Airtable
+- ✅ Deployed REST API migration to production
+
+### Previously Completed:
 - ✅ Analytics Dashboard built with full UI
 - ✅ /api/analytics endpoint created
 - ✅ Win rate, ROI calculations working

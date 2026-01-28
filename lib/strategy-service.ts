@@ -1,4 +1,3 @@
-import Airtable from 'airtable';
 import {
   Strategy,
   StrategyTrigger,
@@ -10,10 +9,10 @@ import {
   AirtableTriggerFields,
 } from '@/types';
 
-// Initialize Airtable
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
-  process.env.AIRTABLE_BASE_ID || ''
-);
+// Airtable REST API configuration
+// Using REST API instead of SDK to avoid AbortSignal bug on Vercel serverless
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 
 // Cache strategies to avoid repeated API calls
 let strategiesCache: Strategy[] | null = null;
@@ -21,15 +20,44 @@ let cacheExpiry: number = 0;
 const CACHE_DURATION = 60000; // 1 minute cache
 
 /**
- * Fetches all triggers from Airtable
+ * Helper function to make Airtable REST API requests
+ * This avoids the AbortSignal bug in the Airtable SDK on Vercel
+ */
+async function airtableRequest(
+  tableName: string,
+  endpoint: string = '',
+  options: RequestInit = {}
+): Promise<Response> {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}${endpoint}`;
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+}
+
+/**
+ * Fetches all triggers from Airtable using REST API
  */
 async function fetchTriggers(): Promise<Map<string, StrategyTrigger[]>> {
   try {
-    const records = await base('Triggers').select().all();
+    const response = await airtableRequest('Triggers');
+
+    if (!response.ok) {
+      console.error('Failed to fetch triggers:', response.status, response.statusText);
+      return new Map();
+    }
+
+    const data = await response.json();
+    const records = data.records || [];
     const triggersByStrategy = new Map<string, StrategyTrigger[]>();
 
     for (const record of records) {
-      const fields = record.fields as unknown as AirtableTriggerFields;
+      const fields = record.fields as AirtableTriggerFields;
       const strategyIds = fields.Strategy || [];
 
       // Parse conditions from JSON string
@@ -59,6 +87,7 @@ async function fetchTriggers(): Promise<Map<string, StrategyTrigger[]>> {
       }
     }
 
+    console.log(`📋 Fetched ${records.length} triggers for ${triggersByStrategy.size} strategies`);
     return triggersByStrategy;
   } catch (error) {
     console.error('Error fetching triggers:', error);
@@ -67,7 +96,7 @@ async function fetchTriggers(): Promise<Map<string, StrategyTrigger[]>> {
 }
 
 /**
- * Fetches all strategies with their triggers from Airtable
+ * Fetches all strategies with their triggers from Airtable using REST API
  */
 export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]> {
   // Return cached data if valid
@@ -75,15 +104,29 @@ export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]>
     return strategiesCache;
   }
 
+  // Verify credentials
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    console.error('❌ Missing Airtable credentials for strategy fetch');
+    return [];
+  }
+
   try {
     // Fetch strategies and triggers in parallel
-    const [strategyRecords, triggersByStrategy] = await Promise.all([
-      base('Strategies').select().all(),
+    const [strategiesResponse, triggersByStrategy] = await Promise.all([
+      airtableRequest('Strategies'),
       fetchTriggers(),
     ]);
 
-    const strategies: Strategy[] = strategyRecords.map((record) => {
-      const fields = record.fields as unknown as AirtableStrategyFields;
+    if (!strategiesResponse.ok) {
+      console.error('Failed to fetch strategies:', strategiesResponse.status, strategiesResponse.statusText);
+      return [];
+    }
+
+    const data = await strategiesResponse.json();
+    const strategyRecords = data.records || [];
+
+    const strategies: Strategy[] = strategyRecords.map((record: { id: string; fields: AirtableStrategyFields; createdTime?: string }) => {
+      const fields = record.fields;
 
       // Parse Discord webhooks from JSON string
       let discordWebhooks: DiscordWebhook[] = [];
@@ -124,7 +167,7 @@ export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]>
         oddsRequirement,
         isTwoStage,
         expiryTimeQ4: fields['Expiry Time Q4'] || '2:20',
-        createdAt: (record as unknown as { _rawJson: { createdTime: string } })._rawJson?.createdTime || '',
+        createdAt: record.createdTime || '',
         updatedAt: new Date().toISOString(),
       };
     });
@@ -133,7 +176,10 @@ export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]>
     strategiesCache = strategies;
     cacheExpiry = Date.now() + CACHE_DURATION;
 
-    console.log(`Loaded ${strategies.length} strategies with ${Array.from(triggersByStrategy.values()).flat().length} total triggers`);
+    const totalTriggers = Array.from(triggersByStrategy.values()).flat().length;
+    const activeCount = strategies.filter(s => s.isActive).length;
+    console.log(`✅ Loaded ${strategies.length} strategies (${activeCount} active) with ${totalTriggers} total triggers`);
+
     return strategies;
   } catch (error) {
     console.error('Error fetching strategies:', error);
@@ -146,7 +192,13 @@ export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]>
  */
 export async function getActiveStrategies(): Promise<Strategy[]> {
   const strategies = await fetchStrategies();
-  return strategies.filter((s) => s.isActive);
+  const active = strategies.filter((s) => s.isActive);
+
+  if (active.length === 0 && strategies.length > 0) {
+    console.log(`⚠️ No active strategies found (${strategies.length} total strategies exist)`);
+  }
+
+  return active;
 }
 
 /**
@@ -158,7 +210,7 @@ export async function getStrategy(id: string): Promise<Strategy | null> {
 }
 
 /**
- * Creates a new strategy
+ * Creates a new strategy using REST API
  */
 export async function createStrategy(data: {
   name: string;
@@ -168,13 +220,25 @@ export async function createStrategy(data: {
   discordWebhooks?: DiscordWebhook[];
 }): Promise<Strategy | null> {
   try {
-    const record = await base('Strategies').create({
-      Name: data.name,
-      Description: data.description || '',
-      'Trigger Mode': data.triggerMode || 'sequential',
-      'Is Active': data.isActive || false,
-      'Discord Webhooks': data.discordWebhooks ? JSON.stringify(data.discordWebhooks) : undefined,
-    } as Partial<AirtableStrategyFields>);
+    const response = await airtableRequest('Strategies', '', {
+      method: 'POST',
+      body: JSON.stringify({
+        fields: {
+          Name: data.name,
+          Description: data.description || '',
+          'Trigger Mode': data.triggerMode || 'sequential',
+          'Is Active': data.isActive || false,
+          'Discord Webhooks': data.discordWebhooks ? JSON.stringify(data.discordWebhooks) : undefined,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to create strategy:', response.status);
+      return null;
+    }
+
+    const record = await response.json();
 
     // Invalidate cache
     strategiesCache = null;
@@ -197,7 +261,7 @@ export async function createStrategy(data: {
 }
 
 /**
- * Updates a strategy
+ * Updates a strategy using REST API
  */
 export async function updateStrategy(
   id: string,
@@ -219,7 +283,15 @@ export async function updateStrategy(
       updateFields['Discord Webhooks'] = JSON.stringify(data.discordWebhooks);
     }
 
-    await base('Strategies').update(id, updateFields);
+    const response = await airtableRequest('Strategies', `/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ fields: updateFields }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to update strategy:', response.status);
+      return false;
+    }
 
     // Invalidate cache
     strategiesCache = null;
@@ -232,7 +304,7 @@ export async function updateStrategy(
 }
 
 /**
- * Creates a new trigger for a strategy
+ * Creates a new trigger for a strategy using REST API
  */
 export async function createTrigger(data: {
   strategyId: string;
@@ -242,13 +314,25 @@ export async function createTrigger(data: {
   entryOrClose?: 'entry' | 'close';
 }): Promise<StrategyTrigger | null> {
   try {
-    const record = await base('Triggers').create({
-      Name: data.name,
-      Strategy: [data.strategyId],
-      Conditions: JSON.stringify(data.conditions),
-      Order: data.order || 0,
-      'Entry Or Close': data.entryOrClose || 'entry',
-    } as Partial<AirtableTriggerFields>);
+    const response = await airtableRequest('Triggers', '', {
+      method: 'POST',
+      body: JSON.stringify({
+        fields: {
+          Name: data.name,
+          Strategy: [data.strategyId],
+          Conditions: JSON.stringify(data.conditions),
+          Order: data.order || 0,
+          'Entry Or Close': data.entryOrClose || 'entry',
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to create trigger:', response.status);
+      return null;
+    }
+
+    const record = await response.json();
 
     // Invalidate cache
     strategiesCache = null;

@@ -1,4 +1,3 @@
-import Airtable from 'airtable';
 import {
   Signal,
   SignalStatus,
@@ -10,13 +9,34 @@ import {
   OddsRequirement,
 } from '@/types';
 
-// Initialize Airtable
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
-  process.env.AIRTABLE_BASE_ID || ''
-);
+// Airtable REST API configuration
+// Using REST API instead of SDK to avoid AbortSignal bug on Vercel serverless
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
+const TABLE_NAME = 'Signals';
 
 // Expiry time for all strategies: 2:20 left in Q4
 const EXPIRY_TIME_SECONDS = 2 * 60 + 20; // 2:20 = 140 seconds
+
+/**
+ * Helper function to make Airtable REST API requests
+ * This avoids the AbortSignal bug in the Airtable SDK on Vercel
+ */
+async function airtableRequest(
+  endpoint: string = '',
+  options: RequestInit = {}
+): Promise<Response> {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(TABLE_NAME)}${endpoint}`;
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+}
 
 /**
  * Parse time string (e.g., "2:20") to seconds
@@ -209,6 +229,12 @@ export async function createSignal(
     return null;
   }
 
+  // Verify credentials
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    console.error('❌ Missing Airtable credentials for signal creation');
+    return null;
+  }
+
   try {
     const now = new Date().toISOString();
     const leadingTeam = getLeadingTeamSpread(game);
@@ -217,30 +243,42 @@ export async function createSignal(
     // Determine initial status
     const initialStatus: SignalStatus = isTwoStage ? 'monitoring' : 'watching';
 
-    // Create the signal in Airtable
-    const record = await base('Signals').create({
-      Name: `${strategy.name} - ${game.awayTeam} @ ${game.homeTeam}`,
-      Strategy: [strategy.id],
-      'Strategy Name': strategy.name,
-      'Trigger ID': trigger.id,
-      'Trigger Name': trigger.name,
-      'Game ID': game.id,
-      'Event ID': game.eventId,
-      'Home Team': game.homeTeam,
-      'Away Team': game.awayTeam,
-      'Home Score': game.homeScore,
-      'Away Score': game.awayScore,
-      Quarter: game.quarter,
-      'Time Remaining': game.timeRemaining,
-      'Entry Time': now,
-      'Entry Trigger Time': now,
-      'Entry Spread': game.spread,
-      'Entry Total': game.total,
-      'Required Spread': strategy.oddsRequirement?.value,
-      'Leading Team At Trigger': leadingTeam.team,
-      Status: initialStatus,
-      Notes: `Entry trigger: ${trigger.name} fired at Q${game.quarter} ${game.timeRemaining}. ${isTwoStage ? 'Waiting for close trigger.' : 'Waiting for odds.'}`,
-    } as Partial<AirtableSignalFields>);
+    // Create the signal in Airtable using REST API
+    const response = await airtableRequest('', {
+      method: 'POST',
+      body: JSON.stringify({
+        fields: {
+          Name: `${strategy.name} - ${game.awayTeam} @ ${game.homeTeam}`,
+          Strategy: [strategy.id],
+          'Strategy Name': strategy.name,
+          'Trigger ID': trigger.id,
+          'Trigger Name': trigger.name,
+          'Game ID': game.id,
+          'Event ID': game.eventId,
+          'Home Team': game.homeTeam,
+          'Away Team': game.awayTeam,
+          'Home Score': game.homeScore,
+          'Away Score': game.awayScore,
+          Quarter: game.quarter,
+          'Time Remaining': game.timeRemaining,
+          'Entry Time': now,
+          'Entry Trigger Time': now,
+          'Entry Spread': game.spread,
+          'Entry Total': game.total,
+          'Required Spread': strategy.oddsRequirement?.value,
+          'Leading Team At Trigger': leadingTeam.team,
+          Status: initialStatus,
+          Notes: `Entry trigger: ${trigger.name} fired at Q${game.quarter} ${game.timeRemaining}. ${isTwoStage ? 'Waiting for close trigger.' : 'Waiting for odds.'}`,
+        } as Partial<AirtableSignalFields>,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to create signal:', response.status, response.statusText);
+      return null;
+    }
+
+    const record = await response.json();
 
     const signal: Signal = {
       id: record.id,
@@ -313,12 +351,22 @@ export async function onCloseTriggerFired(
   try {
     const now = new Date().toISOString();
 
-    // Update Airtable
-    await base('Signals').update(activeSignal.signalId, {
-      Status: 'watching' as SignalStatus,
-      'Close Trigger Time': now,
-      Notes: `Close trigger fired at Q${game.quarter} ${game.timeRemaining}. Now watching for odds to align.`,
-    } as Partial<AirtableSignalFields>);
+    // Update Airtable using REST API
+    const response = await airtableRequest(`/${activeSignal.signalId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        fields: {
+          Status: 'watching' as SignalStatus,
+          'Close Trigger Time': now,
+          Notes: `Close trigger fired at Q${game.quarter} ${game.timeRemaining}. Now watching for odds to align.`,
+        } as Partial<AirtableSignalFields>,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to update signal on close trigger:', response.status);
+      return false;
+    }
 
     // Update local tracking
     signalStore.updateActiveSignal(strategyId, gameId, {
@@ -399,14 +447,24 @@ export async function markBetTaken(
     const now = new Date().toISOString();
     const leadingSpread = getLeadingTeamSpread(game);
 
-    // Update Airtable
-    await base('Signals').update(activeSignal.signalId, {
-      Status: 'bet_taken' as SignalStatus,
-      'Odds Aligned Time': now,
-      'Actual Spread At Entry': leadingSpread.spread,
-      'Leading Team Spread': leadingSpread.spread,
-      Notes: `✅ BET AVAILABLE at Q${game.quarter} ${game.timeRemaining}. Spread: ${leadingSpread.spread} (required: ${strategy.oddsRequirement?.value})`,
-    } as Partial<AirtableSignalFields>);
+    // Update Airtable using REST API
+    const response = await airtableRequest(`/${activeSignal.signalId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        fields: {
+          Status: 'bet_taken' as SignalStatus,
+          'Odds Aligned Time': now,
+          'Actual Spread At Entry': leadingSpread.spread,
+          'Leading Team Spread': leadingSpread.spread,
+          Notes: `✅ BET AVAILABLE at Q${game.quarter} ${game.timeRemaining}. Spread: ${leadingSpread.spread} (required: ${strategy.oddsRequirement?.value})`,
+        } as Partial<AirtableSignalFields>,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to mark bet taken:', response.status);
+      return null;
+    }
 
     // Remove from active tracking (bet is taken)
     signalStore.removeActiveSignal(strategyId, gameId);
@@ -443,12 +501,22 @@ export async function expireSignal(
   try {
     const now = new Date().toISOString();
 
-    // Update Airtable
-    await base('Signals').update(activeSignal.signalId, {
-      Status: 'expired' as SignalStatus,
-      'Expiry Time': now,
-      Notes: `🔴 EXPIRED at Q${game.quarter} ${game.timeRemaining}. Odds never aligned. Required spread: ${activeSignal.requiredSpread}`,
-    } as Partial<AirtableSignalFields>);
+    // Update Airtable using REST API
+    const response = await airtableRequest(`/${activeSignal.signalId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        fields: {
+          Status: 'expired' as SignalStatus,
+          'Expiry Time': now,
+          Notes: `🔴 EXPIRED at Q${game.quarter} ${game.timeRemaining}. Odds never aligned. Required spread: ${activeSignal.requiredSpread}`,
+        } as Partial<AirtableSignalFields>,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to expire signal:', response.status);
+      return false;
+    }
 
     // Remove from active tracking
     signalStore.removeActiveSignal(strategyId, gameId);
@@ -479,17 +547,27 @@ export async function closeSignal(
   try {
     const now = new Date().toISOString();
 
-    // Update the signal in Airtable
-    await base('Signals').update(activeSignal.signalId, {
-      'Close Time': now,
-      'Close Spread': game.spread,
-      'Close Total': game.total,
-      'Final Home Score': game.homeScore,
-      'Final Away Score': game.awayScore,
-      Status: result ? (result === 'win' ? 'won' : result === 'loss' ? 'lost' : 'pushed') : 'closed',
-      Result: result,
-      Notes: `Closed at Q${game.quarter} ${game.timeRemaining}. Final: ${game.awayScore}-${game.homeScore}`,
-    } as Partial<AirtableSignalFields>);
+    // Update the signal in Airtable using REST API
+    const response = await airtableRequest(`/${activeSignal.signalId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        fields: {
+          'Close Time': now,
+          'Close Spread': game.spread,
+          'Close Total': game.total,
+          'Final Home Score': game.homeScore,
+          'Final Away Score': game.awayScore,
+          Status: result ? (result === 'win' ? 'won' : result === 'loss' ? 'lost' : 'pushed') : 'closed',
+          Result: result,
+          Notes: `Closed at Q${game.quarter} ${game.timeRemaining}. Final: ${game.awayScore}-${game.homeScore}`,
+        } as Partial<AirtableSignalFields>,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to close signal:', response.status);
+      return false;
+    }
 
     // Remove from active signals
     signalStore.removeActiveSignal(strategyId, gameId);
@@ -523,18 +601,32 @@ export async function closeAllSignalsForGame(game: LiveGame): Promise<number> {
 }
 
 /**
- * Get all signals from Airtable
+ * Get all signals from Airtable using REST API
  */
 export async function getAllSignals(): Promise<Signal[]> {
   try {
-    const records = await base('Signals')
-      .select({
-        sort: [{ field: 'Entry Time', direction: 'desc' }],
-      })
-      .all();
+    // Verify credentials
+    if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+      console.error('❌ Missing Airtable credentials for signal fetch');
+      return [];
+    }
 
-    return records.map((record) => {
-      const fields = record.fields as unknown as AirtableSignalFields;
+    const params = new URLSearchParams();
+    params.append('sort[0][field]', 'Entry Time');
+    params.append('sort[0][direction]', 'desc');
+
+    const response = await airtableRequest(`?${params.toString()}`);
+
+    if (!response.ok) {
+      console.error('Failed to fetch signals:', response.status, response.statusText);
+      return [];
+    }
+
+    const data = await response.json();
+    const records = data.records || [];
+
+    return records.map((record: { id: string; fields: AirtableSignalFields; createdTime?: string }) => {
+      const fields = record.fields;
       return {
         id: record.id,
         strategyId: Array.isArray(fields.Strategy) ? fields.Strategy[0] : '',
@@ -569,7 +661,7 @@ export async function getAllSignals(): Promise<Signal[]> {
         result: fields.Result,
         profitLoss: fields['Profit Loss'],
         notes: fields.Notes,
-        createdAt: (record as unknown as { _rawJson: { createdTime: string } })._rawJson?.createdTime || '',
+        createdAt: record.createdTime || '',
       };
     });
   } catch (error) {

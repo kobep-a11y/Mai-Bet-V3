@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
-import Airtable from 'airtable';
 
-// Initialize Airtable
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
-  process.env.AIRTABLE_BASE_ID || ''
-);
+// Airtable REST API configuration
+// Using REST API instead of SDK to avoid AbortSignal bug on Vercel serverless
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 
 interface AnalyticsSummary {
   totalSignals: number;
@@ -42,17 +41,79 @@ interface AnalyticsSummary {
   }>;
 }
 
+interface AirtableRecord {
+  id: string;
+  fields: Record<string, unknown>;
+  createdTime?: string;
+}
+
+/**
+ * Helper function to make Airtable REST API requests
+ */
+async function airtableRequest(
+  tableName: string,
+  endpoint: string = '',
+  options: RequestInit = {}
+): Promise<Response> {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}${endpoint}`;
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+}
+
+/**
+ * Fetch all records from a table with pagination support
+ */
+async function fetchAllRecords(tableName: string, params: URLSearchParams = new URLSearchParams()): Promise<AirtableRecord[]> {
+  const allRecords: AirtableRecord[] = [];
+  let offset: string | undefined;
+
+  do {
+    const queryParams = new URLSearchParams(params);
+    if (offset) {
+      queryParams.set('offset', offset);
+    }
+
+    const response = await airtableRequest(tableName, `?${queryParams.toString()}`);
+
+    if (!response.ok) {
+      console.error(`Failed to fetch ${tableName}:`, response.status, response.statusText);
+      break;
+    }
+
+    const data = await response.json();
+    allRecords.push(...(data.records || []));
+    offset = data.offset;
+  } while (offset);
+
+  return allRecords;
+}
+
 /**
  * GET - Fetch analytics summary
  */
 export async function GET() {
   try {
-    // Fetch all signals
-    const signalRecords = await base('Signals')
-      .select({
-        sort: [{ field: 'Entry Time', direction: 'desc' }],
-      })
-      .all();
+    // Verify credentials
+    if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+      return NextResponse.json(
+        { success: false, error: 'Missing Airtable credentials' },
+        { status: 500 }
+      );
+    }
+
+    // Fetch all signals with sorting
+    const params = new URLSearchParams();
+    params.append('sort[0][field]', 'Entry Time');
+    params.append('sort[0][direction]', 'desc');
+
+    const signalRecords = await fetchAllRecords('Signals', params);
 
     // Count by status
     let wonSignals = 0;
@@ -183,12 +244,12 @@ export async function GET() {
     // Get historical games count
     let totalGamesTracked = 0;
     try {
-      const gameRecords = await base('Historical Games')
-        .select({ fields: ['Event ID'] })
-        .all();
+      const gameParams = new URLSearchParams();
+      gameParams.append('fields[]', 'Name'); // Just need to count records
+      const gameRecords = await fetchAllRecords('Historical Games', gameParams);
       totalGamesTracked = gameRecords.length;
     } catch {
-      // Table might not exist
+      // Table might not exist or be empty
     }
 
     const summary: AnalyticsSummary = {

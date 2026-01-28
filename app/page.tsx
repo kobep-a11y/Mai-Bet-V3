@@ -147,6 +147,21 @@ export default function LiveGamesPage() {
                 const lead = Math.abs(game.homeScore - game.awayScore);
                 const hasTrigger = game.status === 'live' && lead >= 10;
 
+                // Extract player names from team strings like "OKC Thunder (KJMR)"
+                const extractPlayerName = (teamStr: string) => {
+                  const match = teamStr?.match(/\(([^)]+)\)/);
+                  return match ? match[1] : teamStr;
+                };
+                const awayPlayer = extractPlayerName(game.awayTeam);
+                const homePlayer = extractPlayerName(game.homeTeam);
+
+                // Get just the team name without player
+                const extractTeamName = (teamStr: string) => {
+                  return teamStr?.replace(/\s*\([^)]+\)/, '') || teamStr;
+                };
+                const awayTeamName = extractTeamName(game.awayTeam);
+                const homeTeamName = extractTeamName(game.homeTeam);
+
                 return (
                   <tr key={game.id} className={isUpdated ? 'game-updated' : ''}>
                     {/* Expand */}
@@ -158,10 +173,10 @@ export default function LiveGamesPage() {
                     <td>
                       <div className="team-cell">
                         <span className={`team-name ${awayWinning ? 'winning' : homeWinning ? 'losing' : ''}`}>
-                          {game.awayTeamId || 'AWAY'}
+                          {awayPlayer}
                         </span>
                         <span className={`team-name ${homeWinning ? 'winning' : awayWinning ? 'losing' : ''}`}>
-                          {game.homeTeamId || 'HOME'}
+                          {homePlayer}
                         </span>
                       </div>
                     </td>
@@ -169,8 +184,8 @@ export default function LiveGamesPage() {
                     {/* Teams - stacked */}
                     <td>
                       <div className="team-cell">
-                        <span className="team-info">{game.awayTeam}</span>
-                        <span className="team-info">{game.homeTeam}</span>
+                        <span className="team-info">{awayTeamName}</span>
+                        <span className="team-info">{homeTeamName}</span>
                       </div>
                     </td>
 

@@ -14,10 +14,8 @@ export default function LiveGamesPage() {
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [filter, setFilter] = useState<'all' | 'live'>('all');
   const [expandedGame, setExpandedGame] = useState<string | null>(null);
 
-  // Track previous scores to detect updates
   const prevScoresRef = useRef<Map<string, { home: number; away: number }>>(new Map());
   const [updatedGames, setUpdatedGames] = useState<Set<string>>(new Set());
 
@@ -27,9 +25,8 @@ export default function LiveGamesPage() {
       const data = await res.json();
       if (data.success) {
         const newGames: GameWithMeta[] = data.games || [];
-
-        // Detect score changes for animation
         const newUpdated = new Set<string>();
+
         newGames.forEach(game => {
           const prev = prevScoresRef.current.get(game.id);
           if (prev && (prev.home !== game.homeScore || prev.away !== game.awayScore)) {
@@ -40,8 +37,7 @@ export default function LiveGamesPage() {
 
         if (newUpdated.size > 0) {
           setUpdatedGames(newUpdated);
-          // Clear after animation
-          setTimeout(() => setUpdatedGames(new Set()), 1000);
+          setTimeout(() => setUpdatedGames(new Set()), 800);
         }
 
         setGames(newGames);
@@ -54,344 +50,232 @@ export default function LiveGamesPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchGames();
-  }, [fetchGames]);
+  useEffect(() => { fetchGames(); }, [fetchGames]);
 
   useEffect(() => {
     if (!autoRefresh) return;
-    const interval = setInterval(fetchGames, 3000); // Faster refresh for smoother updates
+    const interval = setInterval(fetchGames, 3000);
     return () => clearInterval(interval);
   }, [autoRefresh, fetchGames]);
 
   const addDemoGame = async () => {
-    try {
-      await fetch('/api/games/demo', { method: 'POST' });
-      fetchGames();
-    } catch (error) {
-      console.error('Failed to add demo game:', error);
-    }
+    await fetch('/api/games/demo', { method: 'POST' });
+    fetchGames();
   };
 
   const clearFinished = async () => {
-    try {
-      await fetch('/api/games/clear-finished', { method: 'POST' });
-      fetchGames();
-    } catch (error) {
-      console.error('Failed to clear games:', error);
-    }
+    await fetch('/api/games/clear-finished', { method: 'POST' });
+    fetchGames();
   };
-
-  const filteredGames = filter === 'live'
-    ? games.filter(g => g.status === 'live' || g.status === 'halftime')
-    : games;
 
   const stats = {
     total: games.length,
     live: games.filter(g => g.status === 'live').length,
     halftime: games.filter(g => g.status === 'halftime').length,
-    scheduled: games.filter(g => g.status === 'scheduled').length,
-    finished: games.filter(g => g.status === 'final').length,
-  };
-
-  const getTeamStatus = (game: GameWithMeta, isHome: boolean) => {
-    const homeLead = game.homeScore - game.awayScore;
-    if (homeLead === 0) return 'tied';
-    if (isHome) return homeLead > 0 ? 'winning' : 'losing';
-    return homeLead < 0 ? 'winning' : 'losing';
-  };
-
-  const getLead = (game: GameWithMeta) => {
-    const diff = game.homeScore - game.awayScore;
-    if (diff === 0) return { team: 'TIE', amount: 0, color: 'text-gray-400' };
-    if (diff > 0) return { team: game.homeTeam.split(' ').pop(), amount: diff, color: 'text-emerald-400' };
-    return { team: game.awayTeam.split(' ').pop(), amount: Math.abs(diff), color: 'text-emerald-400' };
+    final: games.filter(g => g.status === 'final').length,
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 flex items-center justify-center border border-emerald-500/30">
-              <Activity className="w-6 h-6 text-emerald-400" />
-            </div>
-            {autoRefresh && (
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#0d1117] live-indicator" />
-            )}
-          </div>
+    <div className="p-5">
+      {/* Compact Header */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <Activity className="w-5 h-5 text-green-400" />
           <div>
-            <h1 className="text-2xl font-bold text-gradient">Live Games</h1>
-            <p className="text-sm text-gray-500">
-              Real-time tracking • Updated {lastUpdate.toLocaleTimeString()}
-            </p>
+            <h1 className="text-lg font-semibold">Live Games</h1>
+            <p className="text-xs text-slate-400">{lastUpdate.toLocaleTimeString()}</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              autoRefresh
-                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                : 'bg-gray-800/50 text-gray-400 border border-gray-700/50'
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium ${
+              autoRefresh ? 'bg-green-500/10 text-green-400' : 'bg-slate-700 text-slate-400'
             }`}
           >
-            {autoRefresh ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+            {autoRefresh ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
             {autoRefresh ? 'Live' : 'Paused'}
           </button>
-          <button
-            onClick={fetchGames}
-            className="p-2.5 bg-gray-800/50 hover:bg-gray-700/50 rounded-lg border border-gray-700/50 transition-colors"
-          >
-            <RefreshCw className="w-4 h-4" />
+          <button onClick={fetchGames} className="p-1.5 hover:bg-slate-700 rounded">
+            <RefreshCw className="w-4 h-4 text-slate-400" />
+          </button>
+          <button onClick={addDemoGame} className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs">
+            <Plus className="w-3 h-3" /> Demo
+          </button>
+          <button onClick={clearFinished} className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs text-slate-400">
+            <Trash2 className="w-3 h-3" /> Clear
           </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-5 gap-4 mb-8">
+      {/* Compact Stats Row */}
+      <div className="flex gap-4 mb-5">
         {[
-          { label: 'Total', value: stats.total, color: 'from-purple-500/20 to-blue-500/20', text: 'text-white', border: 'border-purple-500/30' },
-          { label: 'Live', value: stats.live, color: 'from-emerald-500/20 to-cyan-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30' },
-          { label: 'Halftime', value: stats.halftime, color: 'from-amber-500/20 to-orange-500/20', text: 'text-amber-400', border: 'border-amber-500/30' },
-          { label: 'Scheduled', value: stats.scheduled, color: 'from-blue-500/20 to-indigo-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
-          { label: 'Finished', value: stats.finished, color: 'from-gray-500/20 to-gray-600/20', text: 'text-gray-400', border: 'border-gray-600/30' },
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className={`stats-card bg-gradient-to-br ${stat.color} border ${stat.border}`}
-          >
-            <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">{stat.label}</p>
-            <p className={`text-3xl font-bold ${stat.text} mt-1`}>{stat.value}</p>
+          { label: 'Total', value: stats.total, color: 'text-white' },
+          { label: 'Live', value: stats.live, color: 'text-green-400' },
+          { label: 'Half', value: stats.halftime, color: 'text-yellow-400' },
+          { label: 'Final', value: stats.final, color: 'text-slate-400' },
+        ].map(s => (
+          <div key={s.label} className="flex items-center gap-2">
+            <span className={`text-xl font-bold ${s.color}`}>{s.value}</span>
+            <span className="text-xs text-slate-500">{s.label}</span>
           </div>
         ))}
       </div>
 
-      {/* Filters & Actions */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex gap-2 p-1 bg-gray-800/30 rounded-lg border border-gray-700/30">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              filter === 'all'
-                ? 'bg-gray-700/80 text-white shadow-sm'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            All Games
-          </button>
-          <button
-            onClick={() => setFilter('live')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              filter === 'live'
-                ? 'bg-gray-700/80 text-white shadow-sm'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            Live Only
-          </button>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={addDemoGame}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700/50 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Demo
-          </button>
-          <button
-            onClick={clearFinished}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-800/50 hover:bg-red-500/20 hover:border-red-500/30 hover:text-red-400 border border-gray-700/50 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-            Clear Finished
-          </button>
-        </div>
-      </div>
-
-      {/* Games List */}
+      {/* Games List - Compact */}
       {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="skeleton h-32 rounded-xl" />
-          ))}
+        <div className="space-y-2">
+          {[1, 2, 3, 4].map(i => <div key={i} className="skeleton h-16 rounded-lg" />)}
         </div>
-      ) : filteredGames.length === 0 ? (
-        <div className="text-center py-16 card">
-          <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-gray-700/50 to-gray-800/50 flex items-center justify-center mb-4">
-            <Activity className="w-10 h-10 text-gray-600" />
-          </div>
-          <h3 className="text-xl font-semibold mb-2">No games found</h3>
-          <p className="text-gray-500 mb-6 max-w-md mx-auto">
-            Games will appear here when N8N sends webhook updates. Add a demo game to test the interface.
-          </p>
-          <button onClick={addDemoGame} className="btn-primary">
-            <Plus className="w-4 h-4 inline mr-2" />
-            Add Demo Game
-          </button>
+      ) : games.length === 0 ? (
+        <div className="text-center py-12 text-slate-400">
+          <Activity className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          <p className="text-sm">No games. Click Demo to add test data.</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {filteredGames.map((game) => {
-            const lead = getLead(game);
+        <div className="space-y-2">
+          {games.map(game => {
             const isExpanded = expandedGame === game.id;
             const isUpdated = updatedGames.has(game.id);
-            const homeStatus = getTeamStatus(game, true);
-            const awayStatus = getTeamStatus(game, false);
+            const homeWinning = game.homeScore > game.awayScore;
+            const awayWinning = game.awayScore > game.homeScore;
+            const lead = Math.abs(game.homeScore - game.awayScore);
 
             return (
               <div
                 key={game.id}
                 className={`game-card ${game.status === 'live' ? 'is-live' : ''} ${isUpdated ? 'recently-updated' : ''}`}
               >
-                {/* Main Game Info */}
-                <div className="p-5">
-                  {/* Header */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <span className={`status-badge ${game.status}`}>
-                        {game.status === 'live' && (
-                          <span className="w-2 h-2 bg-current rounded-full animate-pulse" />
-                        )}
-                        {game.status}
-                      </span>
-                      <span className="text-sm text-gray-500 font-medium">
-                        Q{game.quarter} • {game.timeRemaining}
-                      </span>
-                      <span className="text-xs text-gray-600 px-2 py-0.5 bg-gray-800/50 rounded">
-                        {game.league}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setExpandedGame(isExpanded ? null : game.id)}
-                      className="p-2 hover:bg-gray-700/50 rounded-lg transition-colors"
-                    >
-                      {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                    </button>
+                {/* Compact Main Row */}
+                <div
+                  className="flex items-center px-4 py-3 cursor-pointer"
+                  onClick={() => setExpandedGame(isExpanded ? null : game.id)}
+                >
+                  {/* Status */}
+                  <div className="w-16 shrink-0">
+                    <span className={`status-badge ${game.status}`}>
+                      {game.status === 'live' && <span className="w-1.5 h-1.5 bg-current rounded-full animate-pulse" />}
+                      {game.status}
+                    </span>
                   </div>
 
-                  {/* Scoreboard */}
-                  <div className="grid grid-cols-3 gap-6 items-center">
-                    {/* Home Team */}
-                    <div className={`text-right py-3 px-4 rounded-lg transition-all ${
-                      homeStatus === 'winning' ? 'team-winning' :
-                      homeStatus === 'losing' ? 'team-losing' : 'team-tied'
-                    }`}>
-                      <p className="font-semibold text-lg">{game.homeTeam}</p>
-                      <p className={`text-4xl font-bold score-value ${isUpdated ? 'updated' : ''}`}>
-                        {game.homeScore}
-                      </p>
-                      {homeStatus === 'winning' && (
-                        <span className="text-xs text-emerald-400 font-medium">LEADING</span>
-                      )}
-                    </div>
-
-                    {/* Center - VS / Lead */}
-                    <div className="text-center">
-                      <div className="text-xs text-gray-600 uppercase tracking-wider mb-2">Lead</div>
-                      <div className={`text-2xl font-bold ${lead.color}`}>
-                        {lead.amount === 0 ? 'TIE' : `+${lead.amount}`}
-                      </div>
-                      {lead.amount > 0 && (
-                        <div className="text-xs text-gray-500 mt-1">{lead.team}</div>
-                      )}
-                    </div>
-
-                    {/* Away Team */}
-                    <div className={`text-left py-3 px-4 rounded-lg transition-all ${
-                      awayStatus === 'winning' ? 'team-winning' :
-                      awayStatus === 'losing' ? 'team-losing' : 'team-tied'
-                    }`}>
-                      <p className="font-semibold text-lg">{game.awayTeam}</p>
-                      <p className={`text-4xl font-bold score-value ${isUpdated ? 'updated' : ''}`}>
-                        {game.awayScore}
-                      </p>
-                      {awayStatus === 'winning' && (
-                        <span className="text-xs text-emerald-400 font-medium">LEADING</span>
-                      )}
-                    </div>
+                  {/* Time */}
+                  <div className="w-20 text-center shrink-0">
+                    <span className="text-xs text-slate-400">Q{game.quarter}</span>
+                    <span className="text-xs text-slate-500 ml-1">{game.timeRemaining}</span>
                   </div>
 
-                  {/* Betting Lines */}
-                  <div className="flex justify-center gap-8 mt-5 pt-4 border-t border-gray-800/50">
-                    <div className="text-center">
-                      <span className="text-xs text-gray-600 uppercase">Spread</span>
-                      <p className="text-sm font-medium text-gray-300">
-                        {game.spread > 0 ? '+' : ''}{game.spread}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <span className="text-xs text-gray-600 uppercase">ML Home</span>
-                      <p className="text-sm font-medium text-gray-300">{game.mlHome}</p>
-                    </div>
-                    <div className="text-center">
-                      <span className="text-xs text-gray-600 uppercase">ML Away</span>
-                      <p className="text-sm font-medium text-gray-300">{game.mlAway}</p>
-                    </div>
-                    <div className="text-center">
-                      <span className="text-xs text-gray-600 uppercase">Total</span>
-                      <p className="text-sm font-medium text-gray-300">{game.total}</p>
-                    </div>
+                  {/* Away Team */}
+                  <div className={`flex-1 text-right pr-3 ${awayWinning ? 'team-winning' : homeWinning ? 'team-losing' : ''}`}>
+                    <span className="text-sm font-medium">{game.awayTeam}</span>
+                  </div>
+
+                  {/* Away Score */}
+                  <div className={`w-10 text-center ${awayWinning ? 'team-winning' : ''}`}>
+                    <span className={`text-lg font-bold score-value ${isUpdated ? 'updated' : ''}`}>
+                      {game.awayScore}
+                    </span>
+                  </div>
+
+                  {/* VS */}
+                  <div className="w-8 text-center text-xs text-slate-600">@</div>
+
+                  {/* Home Score */}
+                  <div className={`w-10 text-center ${homeWinning ? 'team-winning' : ''}`}>
+                    <span className={`text-lg font-bold score-value ${isUpdated ? 'updated' : ''}`}>
+                      {game.homeScore}
+                    </span>
+                  </div>
+
+                  {/* Home Team */}
+                  <div className={`flex-1 pl-3 ${homeWinning ? 'team-winning' : awayWinning ? 'team-losing' : ''}`}>
+                    <span className="text-sm font-medium">{game.homeTeam}</span>
+                  </div>
+
+                  {/* Lead */}
+                  <div className="w-16 text-center shrink-0">
+                    {lead > 0 && (
+                      <span className="text-xs text-green-400 font-medium">+{lead}</span>
+                    )}
+                  </div>
+
+                  {/* Lines */}
+                  <div className="w-24 text-right text-xs text-slate-500 shrink-0 hidden lg:block">
+                    <span>Sprd {game.spread > 0 ? '+' : ''}{game.spread}</span>
+                  </div>
+
+                  {/* Expand */}
+                  <div className="w-8 text-right shrink-0">
+                    {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
                   </div>
                 </div>
 
-                {/* Expanded Quarter Details */}
-                {isExpanded && game.quarterScores && (
-                  <div className="border-t border-gray-800/50 p-5 bg-black/20">
-                    <h4 className="text-sm font-semibold text-gray-400 mb-4 uppercase tracking-wider">
-                      Quarter Breakdown
-                    </h4>
-                    <div className="overflow-x-auto">
-                      <table className="quarter-table">
-                        <thead>
-                          <tr>
-                            <th className="text-left">Team</th>
-                            <th>Q1</th>
-                            <th>Q2</th>
-                            <th className="quarter-highlight">Half</th>
-                            <th>Q3</th>
-                            <th>Q4</th>
-                            <th className="bg-emerald-500/10 rounded">Final</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className={homeStatus === 'winning' ? 'text-emerald-400' : ''}>
-                            <td className="text-left font-medium">{game.homeTeam.split(' ').pop()}</td>
-                            <td>{game.quarterScores.q1Home}</td>
-                            <td>{game.quarterScores.q2Home}</td>
-                            <td className="quarter-highlight font-medium">{game.halftimeScores?.home || '-'}</td>
-                            <td>{game.quarterScores.q3Home}</td>
-                            <td>{game.quarterScores.q4Home}</td>
-                            <td className="bg-emerald-500/10 font-bold">{game.finalScores?.home || game.homeScore}</td>
-                          </tr>
-                          <tr className={awayStatus === 'winning' ? 'text-emerald-400' : ''}>
-                            <td className="text-left font-medium">{game.awayTeam.split(' ').pop()}</td>
-                            <td>{game.quarterScores.q1Away}</td>
-                            <td>{game.quarterScores.q2Away}</td>
-                            <td className="quarter-highlight font-medium">{game.halftimeScores?.away || '-'}</td>
-                            <td>{game.quarterScores.q3Away}</td>
-                            <td>{game.quarterScores.q4Away}</td>
-                            <td className="bg-emerald-500/10 font-bold">{game.finalScores?.away || game.awayScore}</td>
-                          </tr>
-                        </tbody>
-                      </table>
+                {/* Expanded Details */}
+                {isExpanded && (
+                  <div className="px-4 pb-3 pt-1 border-t border-slate-700/50">
+                    <div className="flex gap-6 text-xs">
+                      {/* Quarter Scores */}
+                      {game.quarterScores && (
+                        <div className="flex-1">
+                          <table className="quarter-table">
+                            <thead>
+                              <tr className="text-slate-500">
+                                <th className="text-left w-20">Team</th>
+                                <th>Q1</th>
+                                <th>Q2</th>
+                                <th className="text-yellow-400/60">H</th>
+                                <th>Q3</th>
+                                <th>Q4</th>
+                                <th className="text-green-400/60">F</th>
+                              </tr>
+                            </thead>
+                            <tbody className="text-slate-300">
+                              <tr className={homeWinning ? 'text-green-400' : ''}>
+                                <td className="text-left font-medium">{game.homeTeam.split(' ').pop()}</td>
+                                <td>{game.quarterScores.q1Home}</td>
+                                <td>{game.quarterScores.q2Home}</td>
+                                <td className="text-yellow-400/80">{game.halftimeScores?.home || '-'}</td>
+                                <td>{game.quarterScores.q3Home}</td>
+                                <td>{game.quarterScores.q4Home}</td>
+                                <td className="font-bold">{game.homeScore}</td>
+                              </tr>
+                              <tr className={awayWinning ? 'text-green-400' : ''}>
+                                <td className="text-left font-medium">{game.awayTeam.split(' ').pop()}</td>
+                                <td>{game.quarterScores.q1Away}</td>
+                                <td>{game.quarterScores.q2Away}</td>
+                                <td className="text-yellow-400/80">{game.halftimeScores?.away || '-'}</td>
+                                <td>{game.quarterScores.q3Away}</td>
+                                <td>{game.quarterScores.q4Away}</td>
+                                <td className="font-bold">{game.awayScore}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* Betting Lines */}
+                      <div className="flex gap-4 text-slate-400 items-center">
+                        <div className="text-center">
+                          <div className="text-slate-600 text-[10px]">SPREAD</div>
+                          <div>{game.spread > 0 ? '+' : ''}{game.spread}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-slate-600 text-[10px]">ML</div>
+                          <div>{game.mlHome}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-slate-600 text-[10px]">TOTAL</div>
+                          <div>{game.total}</div>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Game Metadata */}
-                    <div className="mt-5 pt-4 border-t border-gray-800/30 grid grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-600">Event ID</span>
-                        <p className="font-mono text-xs text-gray-400 mt-1">{game.eventId || game.id}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Home ID</span>
-                        <p className="font-mono text-xs text-gray-400 mt-1">{game.homeTeamId || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Away ID</span>
-                        <p className="font-mono text-xs text-gray-400 mt-1">{game.awayTeamId || 'N/A'}</p>
-                      </div>
+                    {/* IDs */}
+                    <div className="mt-2 pt-2 border-t border-slate-700/30 text-[10px] text-slate-600 flex gap-4">
+                      <span>ID: {game.eventId || game.id}</span>
+                      <span>Home: {game.homeTeamId || 'N/A'}</span>
+                      <span>Away: {game.awayTeamId || 'N/A'}</span>
                     </div>
                   </div>
                 )}
@@ -401,24 +285,15 @@ export default function LiveGamesPage() {
         </div>
       )}
 
-      {/* Webhook Info */}
-      <div className="mt-10 card p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500/20 to-red-500/20 flex items-center justify-center border border-orange-500/30">
-            <Activity className="w-5 h-5 text-orange-400" />
+      {/* Webhook Endpoint - Compact */}
+      <div className="mt-6 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+        <div className="flex items-center justify-between">
+          <div className="text-xs">
+            <span className="text-slate-500">Webhook:</span>
+            <code className="ml-2 text-green-400">POST /api/webhook/game-update</code>
           </div>
-          <div>
-            <h3 className="font-semibold">Webhook Endpoint</h3>
-            <p className="text-sm text-gray-500">Configure N8N to send game updates</p>
-          </div>
+          <span className="text-[10px] text-slate-600">20s stale timeout</span>
         </div>
-        <div className="bg-black/30 rounded-lg p-4 font-mono text-sm border border-gray-800/50">
-          <span className="text-emerald-400">POST</span>
-          <span className="text-gray-400 ml-2">/api/webhook/game-update</span>
-        </div>
-        <p className="text-xs text-gray-600 mt-3">
-          Games without updates for 20 seconds are automatically removed. Finished games persist until cleared.
-        </p>
       </div>
     </div>
   );

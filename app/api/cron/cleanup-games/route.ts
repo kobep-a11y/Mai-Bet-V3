@@ -33,8 +33,9 @@ interface AirtableRecord {
  *
  * This endpoint:
  * 1. Deletes all games with status 'final'
- * 2. Deletes games not updated in the last 30 minutes
- * 3. Returns cleanup statistics
+ * 2. Deletes games that already exist in Historical Games (finished games)
+ * 3. Deletes games not updated in the last 30 minutes
+ * 4. Returns cleanup statistics
  */
 export async function GET(request: NextRequest) {
   try {
@@ -65,7 +66,41 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 2. Find and delete stale games (not updated in 30+ minutes)
+    // 2. Get all active games and check if they exist in Historical Games
+    const activeResponse = await airtableRequest('Active Games', '');
+    if (activeResponse.ok) {
+      const activeData = await activeResponse.json();
+      const activeRecords: AirtableRecord[] = activeData.records || [];
+
+      for (const record of activeRecords) {
+        const eventId = record.fields['Event ID'] as string;
+
+        // Check if this game exists in Historical Games
+        const histParams = new URLSearchParams();
+        histParams.append('filterByFormula', `{Name} = '${eventId}'`);
+        histParams.append('maxRecords', '1');
+
+        const histResponse = await airtableRequest('Historical Games', `?${histParams.toString()}`);
+        if (histResponse.ok) {
+          const histData = await histResponse.json();
+          if (histData.records && histData.records.length > 0) {
+            // Game exists in Historical Games - it's finished, delete from Active
+            try {
+              const deleteResponse = await airtableRequest('Active Games', `/${record.id}`, {
+                method: 'DELETE',
+              });
+              if (deleteResponse.ok) {
+                deletedGames.push(`${eventId} (in historical)`);
+              }
+            } catch (err) {
+              errors.push(`Failed to delete ${eventId}: ${err}`);
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Find and delete stale games (not updated in 30+ minutes)
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     const staleParams = new URLSearchParams();
     staleParams.append('filterByFormula', `IS_BEFORE({Last Update}, '${thirtyMinutesAgo}')`);
@@ -78,6 +113,9 @@ export async function GET(request: NextRequest) {
       for (const record of staleRecords) {
         const eventId = record.fields['Event ID'] as string;
         const lastUpdate = record.fields['Last Update'] as string;
+        // Skip if already deleted
+        if (deletedGames.some(g => g.startsWith(eventId))) continue;
+
         try {
           const deleteResponse = await airtableRequest('Active Games', `/${record.id}`, {
             method: 'DELETE',
@@ -91,7 +129,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 3. Call cleanupOldGames for good measure
+    // 4. Call cleanupOldGames for good measure
     const libCleanupCount = await cleanupOldGames();
 
     return NextResponse.json({

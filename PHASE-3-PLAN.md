@@ -1,8 +1,21 @@
 # MAI Bets V3 - Phase 3 CEO Execution Plan
 
-**Document Version:** 1.0
+**Document Version:** 1.1
 **Created:** January 28, 2026
-**Status:** Ready for Execution
+**Updated:** January 28, 2026
+**Status:** IN PROGRESS
+
+---
+
+## Progress Update (v1.1)
+
+### Completed Today:
+- ✅ Analytics Dashboard built with full UI
+- ✅ /api/analytics endpoint created
+- ✅ Win rate, ROI calculations working
+- ✅ Strategy performance tracking in dashboard
+- ✅ Signal volume chart added
+- ✅ Deployed to production
 
 ---
 
@@ -307,11 +320,86 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 | Table | Status | Notes |
 |-------|--------|-------|
 | Active Games | ✅ | Live game state |
-| Historical Games | ✅ | Completed games |
+| Historical Games | ⚠️ VERIFY | Completed games - see schema below |
 | Signals | ✅ | Signal lifecycle |
 | Strategies | ✅ | Strategy definitions |
 | Triggers | ✅ | Linked to strategies |
 | Players | ✅ | Player stats |
+
+---
+
+## CRITICAL: Historical Games Airtable Schema
+
+**The Historical Games table MUST have these exact field names for auto-saving to work:**
+
+| Field Name | Type | Description |
+|------------|------|-------------|
+| Name | Single line text | Event ID (primary field) |
+| Home Team | Single line text | e.g., "NY Knicks (HOLLOW)" |
+| Away Team | Single line text | e.g., "LA Lakers (HOGGY)" |
+| Home Team ID | Single line text | Team identifier |
+| Away Team ID | Single line text | Team identifier |
+| Home Score | Number | Final home score |
+| Away Score | Number | Final away score |
+| Q1 Home | Number | Quarter 1 home score |
+| Q1 Away | Number | Quarter 1 away score |
+| Q2 Home | Number | Quarter 2 home score |
+| Q2 Away | Number | Quarter 2 away score |
+| Halftime Home | Number | Halftime home score |
+| Halftime Away | Number | Halftime away score |
+| Q3 Home | Number | Quarter 3 home score |
+| Q3 Away | Number | Quarter 3 away score |
+| Q4 Home | Number | Quarter 4 home score |
+| Q4 Away | Number | Quarter 4 away score |
+| Total Points | Number | Sum of final scores |
+| Point Differential | Number | Home - Away |
+| Winner | Single select | Options: home, away, tie |
+| Spread | Number | Closing spread line |
+| Total | Number | Closing total line |
+| Spread Result | Single select | Options: home_cover, away_cover, push |
+| Total Result | Single select | Options: over, under, push |
+| Game Date | Date | When game was played |
+| Raw Data | Long text | JSON backup of full game data |
+
+**Troubleshooting if Historical Games aren't saving:**
+1. Check Vercel logs for errors in `saveHistoricalGame`
+2. Verify table name is exactly "Historical Games"
+3. Verify all field names match exactly (case sensitive)
+4. Check Airtable API key has write permissions
+
+---
+
+## CRITICAL: Players Airtable Schema
+
+**The Players table MUST have these exact field names for player stats to work:**
+
+| Field Name | Type | Description |
+|------------|------|-------------|
+| Name | Single line text | Player name (primary, e.g., "KJMR") |
+| Team Name | Single line text | e.g., "OKC Thunder" |
+| Full Team Name | Single line text | e.g., "OKC Thunder (KJMR)" |
+| Games Played | Number | Total games |
+| Wins | Number | Total wins |
+| Losses | Number | Total losses |
+| Win Rate | Number | Win percentage |
+| Total Points For | Number | Cumulative points scored |
+| Total Points Against | Number | Cumulative points allowed |
+| Avg Points For | Number | PPG |
+| Avg Points Against | Number | Opponent PPG |
+| Avg Margin | Number | Average win/loss margin |
+| Spread Wins | Number | ATS wins |
+| Spread Losses | Number | ATS losses |
+| Spread Pushes | Number | ATS pushes |
+| Total Overs | Number | Over hits |
+| Total Unders | Number | Under hits |
+| Total Pushes | Number | Total pushes |
+| ATS Win Rate | Number | ATS percentage |
+| Over Rate | Number | Over percentage |
+| Recent Form | Long text | JSON array of last 10 W/L |
+| Streak Type | Single select | Options: W, L |
+| Streak Count | Number | Current streak length |
+| Last Game Date | Date | Most recent game |
+| Is Active | Checkbox | Currently playing |
 
 ---
 

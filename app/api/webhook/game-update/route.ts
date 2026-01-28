@@ -463,6 +463,19 @@ function validateGameData(newGame: LiveGame, existingGame: LiveGame | undefined)
     corrections.push(`Away score cannot decrease (${newGame.awayScore} < ${existingGame.awayScore})`);
   }
 
+  // STATUS CANNOT REGRESS: Once a game is 'final', it stays final
+  // This prevents the flapping issue where games go back to 'live' after ending
+  if (existingGame.status === 'final') {
+    correctedGame.status = 'final';
+    correctedGame.quarter = existingGame.quarter;
+    correctedGame.timeRemaining = existingGame.timeRemaining;
+    if (newGame.status !== 'final') {
+      corrections.push(`Status cannot regress from final (attempted: ${newGame.status})`);
+    }
+    // Return early - no further validation needed for final games
+    return { isValid: corrections.length === 0, correctedGame, corrections };
+  }
+
   // Quarter should never decrease (except special cases like halftime)
   if (newGame.quarter < existingGame.quarter && existingGame.quarter !== 0) {
     correctedGame.quarter = existingGame.quarter;
@@ -503,19 +516,28 @@ function validateGameData(newGame: LiveGame, existingGame: LiveGame | undefined)
     correctedGame.halftimeScores.away = existingGame.halftimeScores.away;
   }
 
-  // If we're in the same quarter, time should only go down (or stay same)
-  if (newGame.quarter === existingGame.quarter && newGame.status === 'live' && existingGame.status === 'live') {
-    const parseTime = (t: string) => {
-      const [m, s] = t.split(':').map(Number);
-      return (m || 0) * 60 + (s || 0);
-    };
-    const newTimeSeconds = parseTime(newGame.timeRemaining);
-    const existingTimeSeconds = parseTime(existingGame.timeRemaining);
+  // Time validation - prevent time from jumping backwards
+  const parseTime = (t: string) => {
+    const [m, s] = t.split(':').map(Number);
+    return (m || 0) * 60 + (s || 0);
+  };
+  const newTimeSeconds = parseTime(newGame.timeRemaining);
+  const existingTimeSeconds = parseTime(existingGame.timeRemaining);
 
-    if (newTimeSeconds > existingTimeSeconds) {
-      correctedGame.timeRemaining = existingGame.timeRemaining;
-      corrections.push(`Time cannot increase in same quarter (${newGame.timeRemaining} > ${existingGame.timeRemaining})`);
-    }
+  // Calculate total game progress (higher quarter + lower time = more progress)
+  // Q4 0:00 is max progress (4 * 720 + 720 = 3600), Q1 12:00 is min progress (1 * 720 + 0 = 720)
+  const calcProgress = (quarter: number, timeSeconds: number) => {
+    return quarter * 720 + (720 - timeSeconds); // Higher = more game progress
+  };
+  const newProgress = calcProgress(newGame.quarter, newTimeSeconds);
+  const existingProgress = calcProgress(existingGame.quarter, existingTimeSeconds);
+
+  // Game progress should never decrease (time/quarter cannot go backwards)
+  if (newProgress < existingProgress) {
+    // Keep the existing (more advanced) game state
+    correctedGame.quarter = existingGame.quarter;
+    correctedGame.timeRemaining = existingGame.timeRemaining;
+    corrections.push(`Game progress cannot reverse (Q${newGame.quarter} ${newGame.timeRemaining} < Q${existingGame.quarter} ${existingGame.timeRemaining})`);
   }
 
   if (corrections.length > 0) {

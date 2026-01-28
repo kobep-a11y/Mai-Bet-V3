@@ -43,11 +43,24 @@ export default function LiveGamesPage() {
         // Only update games if we got data OR if we had no games before
         // This prevents clearing the display when serverless function returns empty
         if (newGames.length > 0 || !hasGamesRef.current) {
+          // Filter out pre-live games (Q1 12:00 with 0-0 score - game hasn't actually started)
+          // and scheduled games - only show games that have actual action
+          const activeGames = newGames.filter((game) => {
+            // Always show games with any score
+            if (game.homeScore > 0 || game.awayScore > 0) return true;
+            // Filter out scheduled games
+            if (game.status === 'scheduled') return false;
+            // Filter out Q1 12:00 games (not started)
+            if (game.quarter === 1 && game.timeRemaining === '12:00') return false;
+            // Show all other games (including 0-0 games that have started)
+            return true;
+          });
+
           // Sort games consistently by eventId to prevent flashing/reordering
-          const sortedGames = [...newGames].sort((a, b) => {
-            // First sort by status: live > halftime > scheduled > final
-            const statusOrder: Record<string, number> = { live: 0, halftime: 1, scheduled: 2, final: 3 };
-            const statusDiff = (statusOrder[a.status] ?? 4) - (statusOrder[b.status] ?? 4);
+          const sortedGames = [...activeGames].sort((a, b) => {
+            // First sort by status: live > halftime > final
+            const statusOrder: Record<string, number> = { live: 0, halftime: 1, final: 2 };
+            const statusDiff = (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3);
             if (statusDiff !== 0) return statusDiff;
 
             // Then by eventId for stable ordering
@@ -218,11 +231,9 @@ export default function LiveGamesPage() {
                       </div>
                     </td>
 
-                    {/* Lead */}
+                    {/* Lead - always show value, even if 0 */}
                     <td className="text-center">
-                      {lead > 0 && (
-                        <span className="lead-value">{lead}</span>
-                      )}
+                      <span className={`lead-value ${lead === 0 ? 'lead-zero' : ''}`}>{lead}</span>
                     </td>
 
                     {/* Spread - stacked */}

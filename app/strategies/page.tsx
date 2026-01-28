@@ -596,12 +596,12 @@ export default function StrategiesPage() {
   ) => (
     <div className="space-y-3">
       {conditions.map((condition, index) => (
-        <div key={index} className="flex items-center gap-2 bg-gray-700/50 p-3 rounded-lg">
+        <div key={index} className="flex items-center gap-2 bg-slate-100 p-3 rounded-lg">
           {/* Field selector with categories */}
           <select
             value={condition.field}
             onChange={e => updateCondition(type, index, { field: e.target.value })}
-            className="flex-1 px-3 py-2 bg-gray-700 rounded-lg border border-gray-600 text-sm"
+            className="flex-1 px-3 py-2 bg-white rounded-lg border border-slate-300 text-sm text-slate-700"
           >
             {CONDITION_CATEGORIES.map(category => (
               <optgroup key={category.name} label={`${category.icon} ${category.name}`}>
@@ -618,7 +618,7 @@ export default function StrategiesPage() {
           <select
             value={condition.operator}
             onChange={e => updateCondition(type, index, { operator: e.target.value as ConditionOperator })}
-            className="w-28 px-3 py-2 bg-gray-700 rounded-lg border border-gray-600 text-sm"
+            className="w-28 px-3 py-2 bg-white rounded-lg border border-slate-300 text-sm text-slate-700"
           >
             {OPERATORS.map(op => (
               <option key={op.value} value={op.value}>
@@ -632,18 +632,18 @@ export default function StrategiesPage() {
             type="number"
             value={condition.value as number}
             onChange={e => updateCondition(type, index, { value: parseFloat(e.target.value) || 0 })}
-            className="w-24 px-3 py-2 bg-gray-700 rounded-lg border border-gray-600 text-sm"
+            className="w-24 px-3 py-2 bg-white rounded-lg border border-slate-300 text-sm text-slate-700"
           />
 
           {/* Between value2 */}
           {condition.operator === 'between' && (
             <>
-              <span className="text-gray-400">and</span>
+              <span className="text-slate-500">and</span>
               <input
                 type="number"
                 value={condition.value2 as number || 0}
                 onChange={e => updateCondition(type, index, { value2: parseFloat(e.target.value) || 0 })}
-                className="w-24 px-3 py-2 bg-gray-700 rounded-lg border border-gray-600 text-sm"
+                className="w-24 px-3 py-2 bg-white rounded-lg border border-slate-300 text-sm text-slate-700"
               />
             </>
           )}
@@ -651,7 +651,7 @@ export default function StrategiesPage() {
           {/* Remove */}
           <button
             onClick={() => removeCondition(type, index)}
-            className="p-2 hover:bg-red-500/20 text-red-400 rounded-lg"
+            className="p-2 hover:bg-red-100 text-red-500 rounded-lg"
           >
             <X className="w-4 h-4" />
           </button>
@@ -660,7 +660,7 @@ export default function StrategiesPage() {
 
       <button
         onClick={() => addCondition(type)}
-        className="w-full py-2 border-2 border-dashed border-gray-600 rounded-lg text-gray-400 hover:border-purple-500 hover:text-purple-400 transition-colors flex items-center justify-center gap-2"
+        className="w-full py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-purple-500 hover:text-purple-600 transition-colors flex items-center justify-center gap-2"
       >
         <Plus className="w-4 h-4" /> Add Condition
       </button>
@@ -700,8 +700,8 @@ export default function StrategiesPage() {
     return (
       <div className="p-8">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-700 rounded w-1/4"></div>
-          <div className="h-32 bg-gray-700 rounded"></div>
+          <div className="h-8 bg-slate-200 rounded w-1/4"></div>
+          <div className="h-32 bg-slate-200 rounded"></div>
         </div>
       </div>
     );
@@ -712,10 +712,10 @@ export default function StrategiesPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Settings className="w-8 h-8 text-purple-400" />
+          <Settings className="w-8 h-8 text-purple-500" />
           <div>
-            <h1 className="text-2xl font-bold">Strategy Builder</h1>
-            <p className="text-gray-400 text-sm">Create, manage, and discover betting strategies</p>
+            <h1 className="text-2xl font-bold text-slate-800">Strategy Builder</h1>
+            <p className="text-slate-500 text-sm">Create, manage, and discover betting strategies</p>
           </div>
         </div>
         <button
@@ -723,7 +723,7 @@ export default function StrategiesPage() {
             resetForm();
             setShowBuilder(true);
           }}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
         >
           <Plus className="w-5 h-5" /> New Strategy
         </button>
@@ -731,7 +731,7 @@ export default function StrategiesPage() {
 
       {/* Error display */}
       {error && (
-        <div className="mb-4 p-4 bg-red-500/20 border border-red-500 rounded-lg flex items-center gap-2">
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
           <AlertCircle className="w-5 h-5 text-red-500" />
           <span>{error}</span>
           <button onClick={() => setError(null)} className="ml-auto">
@@ -742,13 +742,13 @@ export default function StrategiesPage() {
 
       {/* Strategy List */}
       {strategies.length === 0 ? (
-        <div className="text-center py-16 bg-gray-800/50 rounded-xl">
-          <Target className="w-16 h-16 mx-auto text-gray-600 mb-4" />
-          <h3 className="text-xl font-semibold mb-2">No strategies yet</h3>
-          <p className="text-gray-400 mb-6">Create your first strategy to start generating signals</p>
+        <div className="text-center py-16 bg-white rounded-xl border border-slate-200">
+          <Target className="w-16 h-16 mx-auto text-slate-300 mb-4" />
+          <h3 className="text-xl font-semibold text-slate-700 mb-2">No strategies yet</h3>
+          <p className="text-slate-500 mb-6">Create your first strategy to start generating signals</p>
           <button
             onClick={() => setShowBuilder(true)}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg"
           >
             <Sparkles className="w-5 h-5" /> Create Strategy
           </button>
@@ -758,7 +758,7 @@ export default function StrategiesPage() {
           {strategies.map(strategy => (
             <div
               key={strategy.id}
-              className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden"
+              className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
             >
               {/* Strategy header */}
               <div className="p-4 flex items-center justify-between">
@@ -767,8 +767,8 @@ export default function StrategiesPage() {
                     onClick={() => handleToggleActive(strategy)}
                     className={`p-2 rounded-lg transition-colors ${
                       strategy.isActive
-                        ? 'bg-green-500/20 text-green-400'
-                        : 'bg-gray-700 text-gray-400'
+                        ? 'bg-green-100 text-green-600'
+                        : 'bg-slate-100 text-slate-400'
                     }`}
                   >
                     {strategy.isActive ? (
@@ -778,36 +778,36 @@ export default function StrategiesPage() {
                     )}
                   </button>
                   <div>
-                    <h3 className="font-semibold flex items-center gap-2">
+                    <h3 className="font-semibold text-slate-800 flex items-center gap-2">
                       {strategy.name}
                       <span
                         className={`text-xs px-2 py-0.5 rounded ${
                           strategy.triggerMode === 'sequential'
-                            ? 'bg-blue-500/20 text-blue-400'
-                            : 'bg-orange-500/20 text-orange-400'
+                            ? 'bg-blue-100 text-blue-600'
+                            : 'bg-orange-100 text-orange-600'
                         }`}
                       >
                         {strategy.triggerMode}
                       </span>
                     </h3>
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-slate-500">
                       {strategy.description || 'No description'}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400">
+                  <span className="text-sm text-slate-500">
                     {strategy.triggers?.length || 0} triggers
                   </span>
                   <button
                     onClick={() => openEditStrategy(strategy)}
-                    className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                    className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-600"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDeleteStrategy(strategy.id)}
-                    className="p-2 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
+                    className="p-2 hover:bg-red-50 text-red-500 rounded-lg transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -817,7 +817,7 @@ export default function StrategiesPage() {
                         expandedStrategy === strategy.id ? null : strategy.id
                       )
                     }
-                    className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                    className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-600"
                   >
                     {expandedStrategy === strategy.id ? (
                       <ChevronUp className="w-5 h-5" />
@@ -830,29 +830,29 @@ export default function StrategiesPage() {
 
               {/* Expanded triggers */}
               {expandedStrategy === strategy.id && (
-                <div className="border-t border-gray-700 p-4 bg-gray-900/50">
+                <div className="border-t border-slate-200 p-4 bg-slate-50">
                   <div className="flex items-center gap-2 mb-4">
-                    <Zap className="w-4 h-4 text-yellow-400" />
-                    <h4 className="font-medium">Triggers</h4>
+                    <Zap className="w-4 h-4 text-yellow-500" />
+                    <h4 className="font-medium text-slate-700">Triggers</h4>
                   </div>
                   {strategy.triggers && strategy.triggers.length > 0 ? (
                     <div className="space-y-3">
                       {strategy.triggers.map(trigger => (
                         <div
                           key={trigger.id}
-                          className="bg-gray-800 rounded-lg p-4 border border-gray-700"
+                          className="bg-white rounded-lg p-4 border border-slate-200"
                         >
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
-                              <span className="text-xs bg-gray-700 px-2 py-0.5 rounded">
+                              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
                                 #{trigger.order}
                               </span>
-                              <span className="font-medium">{trigger.name}</span>
+                              <span className="font-medium text-slate-700">{trigger.name}</span>
                               <span
                                 className={`text-xs px-2 py-0.5 rounded ${
                                   trigger.entryOrClose === 'entry'
-                                    ? 'bg-green-500/20 text-green-400'
-                                    : 'bg-red-500/20 text-red-400'
+                                    ? 'bg-green-100 text-green-600'
+                                    : 'bg-red-100 text-red-600'
                                 }`}
                               >
                                 {trigger.entryOrClose}
@@ -866,7 +866,7 @@ export default function StrategiesPage() {
                               return (
                                 <span
                                   key={i}
-                                  className="bg-gray-700 px-3 py-1 rounded text-sm"
+                                  className="bg-slate-100 text-slate-700 px-3 py-1 rounded text-sm"
                                 >
                                   {field?.label || c.field} {op?.symbol} {c.value}
                                   {c.operator === 'between' && ` - ${c.value2}`}
@@ -874,14 +874,14 @@ export default function StrategiesPage() {
                               );
                             })}
                             {trigger.conditions.length === 0 && (
-                              <span className="text-gray-500 italic">No conditions</span>
+                              <span className="text-slate-400 italic">No conditions</span>
                             )}
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-gray-500 text-sm text-center py-4">
+                    <p className="text-slate-400 text-sm text-center py-4">
                       No triggers configured
                     </p>
                   )}
@@ -894,12 +894,12 @@ export default function StrategiesPage() {
 
       {/* Builder Modal */}
       {showBuilder && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
             {/* Modal header with tabs */}
-            <div className="p-4 border-b border-gray-700">
+            <div className="p-4 border-b border-slate-200">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">
+                <h2 className="text-xl font-bold text-slate-800">
                   {editingStrategy ? 'Edit Strategy' : 'Create Strategy'}
                 </h2>
                 <button
@@ -907,7 +907,7 @@ export default function StrategiesPage() {
                     setShowBuilder(false);
                     resetForm();
                   }}
-                  className="p-2 hover:bg-gray-700 rounded-lg"
+                  className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -920,7 +920,7 @@ export default function StrategiesPage() {
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                     builderMode === 'manual'
                       ? 'bg-purple-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
                   <Filter className="w-4 h-4" /> Manual Builder
@@ -930,7 +930,7 @@ export default function StrategiesPage() {
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                     builderMode === 'ai-builder'
                       ? 'bg-purple-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
                   <Wand2 className="w-4 h-4" /> AI Builder
@@ -940,7 +940,7 @@ export default function StrategiesPage() {
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                     builderMode === 'ai-discovery'
                       ? 'bg-purple-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
                   <Brain className="w-4 h-4" /> AI Discovery
@@ -954,22 +954,22 @@ export default function StrategiesPage() {
               {builderMode === 'ai-builder' && (
                 <div className="space-y-6">
                   <div className="text-center py-8">
-                    <Wand2 className="w-16 h-16 mx-auto text-purple-400 mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">AI Strategy Builder</h3>
-                    <p className="text-gray-400 mb-6">
+                    <Wand2 className="w-16 h-16 mx-auto text-purple-500 mb-4" />
+                    <h3 className="text-xl font-semibold text-slate-700 mb-2">AI Strategy Builder</h3>
+                    <p className="text-slate-500 mb-6">
                       Describe your strategy in plain English and AI will generate the conditions
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium mb-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
                       Describe your strategy
                     </label>
                     <textarea
                       value={aiPrompt}
                       onChange={e => setAiPrompt(e.target.value)}
                       placeholder="e.g., Alert me when the home team is leading by 8+ points at halftime..."
-                      className="w-full px-4 py-3 bg-gray-700 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none resize-none"
+                      className="w-full px-4 py-3 bg-white rounded-lg border border-slate-300 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none text-slate-700"
                       rows={4}
                     />
                   </div>
@@ -977,7 +977,7 @@ export default function StrategiesPage() {
                   <button
                     onClick={handleAIGenerate}
                     disabled={!aiPrompt || aiGenerating}
-                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg"
+                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg"
                   >
                     {aiGenerating ? (
                       <>
@@ -991,12 +991,12 @@ export default function StrategiesPage() {
                     )}
                   </button>
 
-                  <div className="bg-gray-700/50 rounded-lg p-4">
-                    <h4 className="font-medium mb-2">Example prompts:</h4>
-                    <ul className="text-sm text-gray-400 space-y-1">
-                      <li>• "Bet on home team when leading by 10+ at halftime"</li>
-                      <li>• "Signal when Q3 lead is greater than Q1 lead"</li>
-                      <li>• "Alert when underdog is winning in Q4"</li>
+                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                    <h4 className="font-medium text-slate-700 mb-2">Example prompts:</h4>
+                    <ul className="text-sm text-slate-500 space-y-1">
+                      <li>• &quot;Bet on home team when leading by 10+ at halftime&quot;</li>
+                      <li>• &quot;Signal when Q3 lead is greater than Q1 lead&quot;</li>
+                      <li>• &quot;Alert when underdog is winning in Q4&quot;</li>
                     </ul>
                   </div>
                 </div>
@@ -1006,9 +1006,9 @@ export default function StrategiesPage() {
               {builderMode === 'ai-discovery' && (
                 <div className="space-y-6">
                   <div className="text-center py-8">
-                    <Brain className="w-16 h-16 mx-auto text-purple-400 mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">AI Pattern Discovery</h3>
-                    <p className="text-gray-400 mb-6">
+                    <Brain className="w-16 h-16 mx-auto text-purple-500 mb-4" />
+                    <h3 className="text-xl font-semibold text-slate-700 mb-2">AI Pattern Discovery</h3>
+                    <p className="text-slate-500 mb-6">
                       Analyze historical games to discover profitable betting patterns
                     </p>
                   </div>
@@ -1016,7 +1016,7 @@ export default function StrategiesPage() {
                   <button
                     onClick={handleAIDiscovery}
                     disabled={discoveryRunning}
-                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg"
+                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg"
                   >
                     {discoveryRunning ? (
                       <>
@@ -1032,27 +1032,27 @@ export default function StrategiesPage() {
 
                   {discoveredPatterns.length > 0 && (
                     <div className="space-y-4">
-                      <h4 className="font-medium flex items-center gap-2">
-                        <BarChart3 className="w-5 h-5 text-green-400" />
+                      <h4 className="font-medium text-slate-700 flex items-center gap-2">
+                        <BarChart3 className="w-5 h-5 text-green-500" />
                         Discovered Patterns
                       </h4>
                       {discoveredPatterns.map((pattern, i) => (
                         <div
                           key={i}
-                          className="bg-gray-700/50 rounded-lg p-4 border border-gray-600"
+                          className="bg-slate-50 rounded-lg p-4 border border-slate-200"
                         >
                           <div className="flex items-center justify-between mb-2">
-                            <h5 className="font-medium">{pattern.pattern}</h5>
-                            <span className="text-green-400 font-bold">
+                            <h5 className="font-medium text-slate-700">{pattern.pattern}</h5>
+                            <span className="text-green-600 font-bold">
                               {pattern.winRate}% Win Rate
                             </span>
                           </div>
-                          <p className="text-sm text-gray-400 mb-3">
+                          <p className="text-sm text-slate-500 mb-3">
                             Based on {pattern.sampleSize} historical games
                           </p>
                           <button
                             onClick={() => createFromPattern(pattern)}
-                            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm"
+                            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm"
                           >
                             <Plus className="w-4 h-4" /> Create Strategy
                           </button>
@@ -1069,27 +1069,27 @@ export default function StrategiesPage() {
                   {/* Basic Info */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
-                      <label className="block text-sm font-medium mb-1">Strategy Name</label>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Strategy Name</label>
                       <input
                         type="text"
                         value={form.name}
                         onChange={e => setForm({ ...form, name: e.target.value })}
-                        className="w-full px-4 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none"
+                        className="w-full px-4 py-2 bg-white rounded-lg border border-slate-300 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 text-slate-700"
                         placeholder="e.g., Halftime Lead Strategy"
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-sm font-medium mb-1">Description</label>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
                       <textarea
                         value={form.description}
                         onChange={e => setForm({ ...form, description: e.target.value })}
-                        className="w-full px-4 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none resize-none"
+                        className="w-full px-4 py-2 bg-white rounded-lg border border-slate-300 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 resize-none text-slate-700"
                         rows={2}
                         placeholder="Describe what this strategy does..."
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Trigger Mode</label>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Trigger Mode</label>
                       <select
                         value={form.triggerMode}
                         onChange={e =>
@@ -1098,7 +1098,7 @@ export default function StrategiesPage() {
                             triggerMode: e.target.value as 'sequential' | 'parallel',
                           })
                         }
-                        className="w-full px-4 py-2 bg-gray-700 rounded-lg border border-gray-600"
+                        className="w-full px-4 py-2 bg-white rounded-lg border border-slate-300 text-slate-700"
                       >
                         <option value="sequential">Sequential (all must match)</option>
                         <option value="parallel">Parallel (any can match)</option>
@@ -1110,22 +1110,22 @@ export default function StrategiesPage() {
                         id="isActive"
                         checked={form.isActive}
                         onChange={e => setForm({ ...form, isActive: e.target.checked })}
-                        className="w-5 h-5 rounded"
+                        className="w-5 h-5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                       />
-                      <label htmlFor="isActive" className="text-sm font-medium">
+                      <label htmlFor="isActive" className="text-sm font-medium text-slate-700">
                         Strategy Active
                       </label>
                     </div>
                   </div>
 
                   {/* Entry Conditions */}
-                  <div className="bg-gray-700/30 rounded-xl p-4">
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold flex items-center gap-2">
-                        <Zap className="w-5 h-5 text-green-400" />
+                      <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                        <Zap className="w-5 h-5 text-green-500" />
                         Entry Conditions
                       </h3>
-                      <span className="text-sm text-gray-400">
+                      <span className="text-sm text-slate-500">
                         {form.entryConditions.length} condition(s)
                       </span>
                     </div>
@@ -1133,11 +1133,11 @@ export default function StrategiesPage() {
                   </div>
 
                   {/* Close Conditions */}
-                  <div className="bg-gray-700/30 rounded-xl p-4">
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <h3 className="font-semibold flex items-center gap-2">
-                          <Clock className="w-5 h-5 text-red-400" />
+                        <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                          <Clock className="w-5 h-5 text-red-500" />
                           Close Conditions
                         </h3>
                         <label className="flex items-center gap-2 text-sm">
@@ -1147,29 +1147,29 @@ export default function StrategiesPage() {
                             onChange={e =>
                               setForm({ ...form, hasAdvancedClose: e.target.checked })
                             }
-                            className="w-4 h-4 rounded"
+                            className="w-4 h-4 rounded border-slate-300 text-purple-600"
                           />
-                          Advanced Close
+                          <span className="text-slate-600">Advanced Close</span>
                         </label>
                       </div>
                     </div>
                     {form.hasAdvancedClose ? (
                       renderConditionEditor(form.closeConditions, 'close')
                     ) : (
-                      <p className="text-gray-500 text-sm text-center py-4">
+                      <p className="text-slate-400 text-sm text-center py-4">
                         Enable Advanced Close to set custom close conditions
                       </p>
                     )}
                   </div>
 
                   {/* Rules */}
-                  <div className="bg-gray-700/30 rounded-xl p-4">
-                    <h3 className="font-semibold mb-4 flex items-center gap-2">
-                      <Filter className="w-5 h-5 text-blue-400" />
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                    <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                      <Filter className="w-5 h-5 text-blue-500" />
                       Rules
                     </h3>
                     <div className="grid grid-cols-3 gap-4 mb-4">
-                      <label className="flex items-center gap-2 p-3 bg-gray-700/50 rounded-lg cursor-pointer">
+                      <label className="flex items-center gap-2 p-3 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-purple-300">
                         <input
                           type="checkbox"
                           checked={form.rules.firstHalfOnly}
@@ -1179,11 +1179,11 @@ export default function StrategiesPage() {
                               rules: { ...form.rules, firstHalfOnly: e.target.checked, secondHalfOnly: false },
                             })
                           }
-                          className="w-4 h-4 rounded"
+                          className="w-4 h-4 rounded border-slate-300 text-purple-600"
                         />
-                        <span className="text-sm">First Half Only</span>
+                        <span className="text-sm text-slate-700">First Half Only</span>
                       </label>
-                      <label className="flex items-center gap-2 p-3 bg-gray-700/50 rounded-lg cursor-pointer">
+                      <label className="flex items-center gap-2 p-3 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-purple-300">
                         <input
                           type="checkbox"
                           checked={form.rules.secondHalfOnly}
@@ -1193,11 +1193,11 @@ export default function StrategiesPage() {
                               rules: { ...form.rules, secondHalfOnly: e.target.checked, firstHalfOnly: false },
                             })
                           }
-                          className="w-4 h-4 rounded"
+                          className="w-4 h-4 rounded border-slate-300 text-purple-600"
                         />
-                        <span className="text-sm">Second Half Only</span>
+                        <span className="text-sm text-slate-700">Second Half Only</span>
                       </label>
-                      <label className="flex items-center gap-2 p-3 bg-gray-700/50 rounded-lg cursor-pointer">
+                      <label className="flex items-center gap-2 p-3 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-purple-300">
                         <input
                           type="checkbox"
                           checked={form.rules.excludeOvertime}
@@ -1207,15 +1207,15 @@ export default function StrategiesPage() {
                               rules: { ...form.rules, excludeOvertime: e.target.checked },
                             })
                           }
-                          className="w-4 h-4 rounded"
+                          className="w-4 h-4 rounded border-slate-300 text-purple-600"
                         />
-                        <span className="text-sm">Exclude Overtime</span>
+                        <span className="text-sm text-slate-700">Exclude Overtime</span>
                       </label>
                     </div>
 
                     <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">
+                        <label className="block text-sm text-slate-500 mb-1">
                           Specific Quarter
                         </label>
                         <select
@@ -1231,7 +1231,7 @@ export default function StrategiesPage() {
                               },
                             })
                           }
-                          className="w-full px-3 py-2 bg-gray-700 rounded-lg border border-gray-600"
+                          className="w-full px-3 py-2 bg-white rounded-lg border border-slate-300 text-slate-700"
                         >
                           <option value="">Any</option>
                           <option value="1">Q1</option>
@@ -1241,7 +1241,7 @@ export default function StrategiesPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">
+                        <label className="block text-sm text-slate-500 mb-1">
                           Stop At Time (min)
                         </label>
                         <input
@@ -1258,12 +1258,12 @@ export default function StrategiesPage() {
                               },
                             })
                           }
-                          className="w-full px-3 py-2 bg-gray-700 rounded-lg border border-gray-600"
+                          className="w-full px-3 py-2 bg-white rounded-lg border border-slate-300 text-slate-700"
                           placeholder="e.g., 5"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">
+                        <label className="block text-sm text-slate-500 mb-1">
                           Min Combined Score
                         </label>
                         <input
@@ -1280,7 +1280,7 @@ export default function StrategiesPage() {
                               },
                             })
                           }
-                          className="w-full px-3 py-2 bg-gray-700 rounded-lg border border-gray-600"
+                          className="w-full px-3 py-2 bg-white rounded-lg border border-slate-300 text-slate-700"
                           placeholder="e.g., 50"
                         />
                       </div>
@@ -1288,9 +1288,9 @@ export default function StrategiesPage() {
                   </div>
 
                   {/* Win Requirements */}
-                  <div className="bg-gray-700/30 rounded-xl p-4">
-                    <h3 className="font-semibold mb-4 flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-yellow-400" />
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                    <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-yellow-500" />
                       Win Requirements (for Backtesting)
                     </h3>
                     <div className="space-y-2">
@@ -1299,8 +1299,8 @@ export default function StrategiesPage() {
                           key={req.value}
                           className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
                             form.winRequirement.type === req.value
-                              ? 'bg-purple-600/20 border border-purple-500'
-                              : 'bg-gray-700/50 border border-transparent hover:bg-gray-700'
+                              ? 'bg-purple-50 border border-purple-300'
+                              : 'bg-white border border-slate-200 hover:border-purple-200'
                           }`}
                         >
                           <input
@@ -1313,9 +1313,9 @@ export default function StrategiesPage() {
                                 winRequirement: { type: req.value as WinRequirement['type'] },
                               })
                             }
-                            className="w-4 h-4"
+                            className="w-4 h-4 text-purple-600"
                           />
-                          <span className="text-sm">{req.label}</span>
+                          <span className="text-sm text-slate-700">{req.label}</span>
                           {req.value === 'final_lead_gte' &&
                             form.winRequirement.type === 'final_lead_gte' && (
                               <input
@@ -1330,7 +1330,7 @@ export default function StrategiesPage() {
                                     },
                                   })
                                 }
-                                className="w-20 px-2 py-1 bg-gray-700 rounded border border-gray-600 text-sm"
+                                className="w-20 px-2 py-1 bg-white rounded border border-slate-300 text-sm text-slate-700"
                                 placeholder="Value"
                               />
                             )}
@@ -1340,9 +1340,9 @@ export default function StrategiesPage() {
                   </div>
 
                   {/* Discord Template */}
-                  <div className="bg-gray-700/30 rounded-xl p-4">
-                    <h3 className="font-semibold mb-4 flex items-center gap-2">
-                      <MessageSquare className="w-5 h-5 text-indigo-400" />
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                    <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                      <MessageSquare className="w-5 h-5 text-indigo-500" />
                       Discord Message Template
                     </h3>
 
@@ -1356,7 +1356,7 @@ export default function StrategiesPage() {
                               discordTemplate: form.discordTemplate + v.key,
                             })
                           }
-                          className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs"
+                          className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded text-xs text-slate-600"
                         >
                           {v.key}
                         </button>
@@ -1366,14 +1366,14 @@ export default function StrategiesPage() {
                     <textarea
                       value={form.discordTemplate}
                       onChange={e => setForm({ ...form, discordTemplate: e.target.value })}
-                      className="w-full px-4 py-3 bg-gray-700 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none font-mono text-sm resize-none"
+                      className="w-full px-4 py-3 bg-white rounded-lg border border-slate-300 focus:border-purple-500 focus:outline-none font-mono text-sm resize-none text-slate-700"
                       rows={6}
                     />
 
                     <div className="mt-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <Eye className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-400">Live Preview</span>
+                        <Eye className="w-4 h-4 text-slate-400" />
+                        <span className="text-sm text-slate-500">Live Preview</span>
                       </div>
                       {renderDiscordPreview()}
                     </div>
@@ -1383,13 +1383,13 @@ export default function StrategiesPage() {
             </div>
 
             {/* Modal footer */}
-            <div className="p-4 border-t border-gray-700 flex justify-end gap-3">
+            <div className="p-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50">
               <button
                 onClick={() => {
                   setShowBuilder(false);
                   resetForm();
                 }}
-                className="px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg"
+                className="px-6 py-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-slate-600"
               >
                 Cancel
               </button>
@@ -1397,7 +1397,7 @@ export default function StrategiesPage() {
                 <button
                   onClick={handleSaveStrategy}
                   disabled={!form.name}
-                  className="flex items-center gap-2 px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg"
+                  className="flex items-center gap-2 px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg"
                 >
                   <Save className="w-4 h-4" />
                   {editingStrategy ? 'Update Strategy' : 'Create Strategy'}

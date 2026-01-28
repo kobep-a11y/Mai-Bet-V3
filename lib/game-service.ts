@@ -1,16 +1,39 @@
-import Airtable from 'airtable';
 import { LiveGame } from '@/types';
 
-// Initialize Airtable
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
-  process.env.AIRTABLE_BASE_ID || ''
-);
-
+// Airtable REST API configuration
+// Using REST API instead of SDK to avoid AbortSignal bug on Vercel serverless
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 const GAMES_TABLE = 'Active Games';
 
 // Cache for reducing Airtable API calls (still useful within a single request)
-let gamesCache: Map<string, { game: LiveGame; recordId: string; timestamp: number }> = new Map();
+const gamesCache: Map<string, { game: LiveGame; recordId: string; timestamp: number }> = new Map();
 const CACHE_TTL = 5000; // 5 seconds
+
+/**
+ * Helper function to make Airtable REST API requests
+ */
+async function airtableRequest(
+  endpoint: string = '',
+  options: RequestInit = {}
+): Promise<Response> {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(GAMES_TABLE)}${endpoint}`;
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+}
+
+interface AirtableRecord {
+  id: string;
+  fields: Record<string, unknown>;
+  createdTime?: string;
+}
 
 /**
  * Upsert a game - create if doesn't exist, update if it does
@@ -19,16 +42,21 @@ const CACHE_TTL = 5000; // 5 seconds
 export async function upsertGame(game: LiveGame): Promise<void> {
   try {
     // Check if game exists
-    const existingRecords = await base(GAMES_TABLE)
-      .select({
-        filterByFormula: `{Event ID} = '${game.eventId}'`,
-        maxRecords: 1,
-      })
-      .firstPage();
+    const params = new URLSearchParams();
+    params.append('filterByFormula', `{Event ID} = '${game.eventId}'`);
+    params.append('maxRecords', '1');
 
-    // Build game data, preserving existing team names if new values are empty
+    const response = await airtableRequest(`?${params.toString()}`);
+    if (!response.ok) {
+      console.error('Error checking for existing game:', response.status);
+      return;
+    }
+
+    const data = await response.json();
+    const existingRecords = data.records || [];
     const existingFields = existingRecords[0]?.fields || {};
 
+    // Build game data, preserving existing team names if new values are empty
     const gameData: Record<string, unknown> = {
       'Event ID': game.eventId,
       'Home Score': game.homeScore,
@@ -41,20 +69,17 @@ export async function upsertGame(game: LiveGame): Promise<void> {
     };
 
     // Preserve odds: only update if new values are provided (not null/defaults)
-    // This prevents default odds from overwriting actual odds in Airtable
     const existingSpread = existingFields['Spread'] as number | undefined;
     const existingMLHome = existingFields['ML Home'] as number | undefined;
     const existingMLAway = existingFields['ML Away'] as number | undefined;
     const existingTotal = existingFields['Total'] as number | undefined;
 
-    // Only update spread if we have a real value (not null and not undefined)
     if (game.spread !== null && game.spread !== undefined) {
       gameData['Spread'] = game.spread;
     } else if (existingSpread !== undefined) {
       gameData['Spread'] = existingSpread;
     }
 
-    // Only update ML if we have real values
     if (game.mlHome !== null && game.mlHome !== undefined) {
       gameData['ML Home'] = game.mlHome;
     } else if (existingMLHome !== undefined) {
@@ -67,7 +92,6 @@ export async function upsertGame(game: LiveGame): Promise<void> {
       gameData['ML Away'] = existingMLAway;
     }
 
-    // Only update total if we have a real value
     if (game.total !== null && game.total !== undefined) {
       gameData['Total'] = game.total;
     } else if (existingTotal !== undefined) {
@@ -95,10 +119,24 @@ export async function upsertGame(game: LiveGame): Promise<void> {
 
     if (existingRecords.length > 0) {
       // Update existing record
-      await base(GAMES_TABLE).update(existingRecords[0].id, gameData);
+      const updateResponse = await airtableRequest(`/${existingRecords[0].id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ fields: gameData }),
+      });
+
+      if (!updateResponse.ok) {
+        console.error('Error updating game:', updateResponse.status);
+      }
     } else {
       // Create new record
-      await base(GAMES_TABLE).create(gameData);
+      const createResponse = await airtableRequest('', {
+        method: 'POST',
+        body: JSON.stringify({ fields: gameData }),
+      });
+
+      if (!createResponse.ok) {
+        console.error('Error creating game:', createResponse.status);
+      }
     }
 
     // Update cache
@@ -121,15 +159,19 @@ export async function getActiveGames(): Promise<LiveGame[]> {
     // Get games updated in the last 5 minutes (active games)
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
-    const records = await base(GAMES_TABLE)
-      .select({
-        filterByFormula: `AND(
-          {Status} != 'final',
-          IS_AFTER({Last Update}, '${fiveMinutesAgo}')
-        )`,
-        sort: [{ field: 'Last Update', direction: 'desc' }],
-      })
-      .all();
+    const params = new URLSearchParams();
+    params.append('filterByFormula', `AND({Status} != 'final', IS_AFTER({Last Update}, '${fiveMinutesAgo}'))`);
+    params.append('sort[0][field]', 'Last Update');
+    params.append('sort[0][direction]', 'desc');
+
+    const response = await airtableRequest(`?${params.toString()}`);
+    if (!response.ok) {
+      console.error('Error fetching active games:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const records: AirtableRecord[] = data.records || [];
 
     return records.map((record) => {
       const fields = record.fields;
@@ -173,12 +215,18 @@ export async function getGame(eventId: string): Promise<LiveGame | null> {
   }
 
   try {
-    const records = await base(GAMES_TABLE)
-      .select({
-        filterByFormula: `{Event ID} = '${eventId}'`,
-        maxRecords: 1,
-      })
-      .firstPage();
+    const params = new URLSearchParams();
+    params.append('filterByFormula', `{Event ID} = '${eventId}'`);
+    params.append('maxRecords', '1');
+
+    const response = await airtableRequest(`?${params.toString()}`);
+    if (!response.ok) {
+      console.error('Error fetching game:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const records: AirtableRecord[] = data.records || [];
 
     if (records.length === 0) return null;
 
@@ -225,16 +273,20 @@ export async function getGame(eventId: string): Promise<LiveGame | null> {
  */
 export async function markGameFinished(eventId: string): Promise<void> {
   try {
-    const records = await base(GAMES_TABLE)
-      .select({
-        filterByFormula: `{Event ID} = '${eventId}'`,
-        maxRecords: 1,
-      })
-      .firstPage();
+    const params = new URLSearchParams();
+    params.append('filterByFormula', `{Event ID} = '${eventId}'`);
+    params.append('maxRecords', '1');
+
+    const response = await airtableRequest(`?${params.toString()}`);
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const records: AirtableRecord[] = data.records || [];
 
     if (records.length > 0) {
-      await base(GAMES_TABLE).update(records[0].id, {
-        'Status': 'final',
+      await airtableRequest(`/${records[0].id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ fields: { 'Status': 'final' } }),
       });
     }
   } catch (error) {
@@ -247,18 +299,26 @@ export async function markGameFinished(eventId: string): Promise<void> {
  */
 export async function deleteGame(eventId: string): Promise<boolean> {
   try {
-    const records = await base(GAMES_TABLE)
-      .select({
-        filterByFormula: `{Event ID} = '${eventId}'`,
-        maxRecords: 1,
-      })
-      .firstPage();
+    const params = new URLSearchParams();
+    params.append('filterByFormula', `{Event ID} = '${eventId}'`);
+    params.append('maxRecords', '1');
+
+    const response = await airtableRequest(`?${params.toString()}`);
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    const records: AirtableRecord[] = data.records || [];
 
     if (records.length > 0) {
-      await base(GAMES_TABLE).destroy([records[0].id]);
-      gamesCache.delete(eventId);
-      console.log(`🗑️ Deleted game ${eventId} from Active Games table`);
-      return true;
+      const deleteResponse = await airtableRequest(`/${records[0].id}`, {
+        method: 'DELETE',
+      });
+
+      if (deleteResponse.ok) {
+        gamesCache.delete(eventId);
+        console.log(`🗑️ Deleted game ${eventId} from Active Games table`);
+        return true;
+      }
     }
     return false;
   } catch (error) {
@@ -274,26 +334,31 @@ export async function cleanupOldGames(): Promise<number> {
   try {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-    const records = await base(GAMES_TABLE)
-      .select({
-        filterByFormula: `AND(
-          {Status} = 'final',
-          IS_BEFORE({Last Update}, '${oneHourAgo}')
-        )`,
-      })
-      .all();
+    const params = new URLSearchParams();
+    params.append('filterByFormula', `AND({Status} = 'final', IS_BEFORE({Last Update}, '${oneHourAgo}'))`);
 
-    // Delete old records
-    const recordIds = records.map(r => r.id);
-    if (recordIds.length > 0) {
-      // Airtable delete in batches of 10
-      for (let i = 0; i < recordIds.length; i += 10) {
-        const batch = recordIds.slice(i, i + 10);
-        await base(GAMES_TABLE).destroy(batch);
+    const response = await airtableRequest(`?${params.toString()}`);
+    if (!response.ok) return 0;
+
+    const data = await response.json();
+    const records: AirtableRecord[] = data.records || [];
+
+    // Delete old records in batches of 10
+    let deleted = 0;
+    for (let i = 0; i < records.length; i += 10) {
+      const batch = records.slice(i, i + 10);
+      const deleteParams = batch.map(r => `records[]=${r.id}`).join('&');
+
+      const deleteResponse = await airtableRequest(`?${deleteParams}`, {
+        method: 'DELETE',
+      });
+
+      if (deleteResponse.ok) {
+        deleted += batch.length;
       }
     }
 
-    return recordIds.length;
+    return deleted;
   } catch (error) {
     console.error('Error cleaning up old games:', error);
     return 0;

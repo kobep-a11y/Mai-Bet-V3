@@ -29,6 +29,26 @@ async function airtableRequest(
 }
 
 /**
+ * Check if a game already exists in Airtable by event ID
+ * This is essential for serverless environments where in-memory cache resets
+ */
+async function gameExistsInAirtable(eventId: string): Promise<boolean> {
+  try {
+    const params = new URLSearchParams();
+    params.append('filterByFormula', `{Name} = '${eventId}'`);
+    params.append('maxRecords', '1');
+
+    const response = await airtableRequest(`?${params.toString()}`);
+    const result = await response.json();
+
+    return response.ok && result.records && result.records.length > 0;
+  } catch (error) {
+    console.error('Error checking for existing game:', error);
+    return false; // On error, allow save attempt (Airtable will reject true duplicates)
+  }
+}
+
+/**
  * Converts a finished LiveGame to a HistoricalGame and saves to Airtable
  * Uses REST API directly to avoid Airtable SDK AbortSignal bug
  */
@@ -39,15 +59,24 @@ export async function saveHistoricalGame(game: LiveGame): Promise<HistoricalGame
     return null;
   }
 
-  // Check if already saved
+  // Check in-memory cache first (fast path)
   if (savedGames.has(game.id)) {
-    console.log(`Game ${game.id} already saved to Airtable`);
+    console.log(`Game ${game.id} already in memory cache, skipping`);
     return null;
   }
 
   // Verify credentials
   if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
     console.error('Missing Airtable credentials');
+    return null;
+  }
+
+  // Check Airtable for existing record (handles serverless cold starts)
+  const eventId = game.eventId || game.id;
+  const existsInAirtable = await gameExistsInAirtable(eventId);
+  if (existsInAirtable) {
+    console.log(`Game ${eventId} already exists in Airtable, skipping`);
+    savedGames.add(game.id); // Update memory cache
     return null;
   }
 

@@ -13,6 +13,8 @@ import {
 import { sendBetAvailableAlert } from '@/lib/discord-service';
 import { saveHistoricalGame } from '@/lib/historical-service';
 import { upsertGame, getActiveGames, getGame as getGameFromDB, deleteGame as deleteGameFromDB } from '@/lib/game-service';
+import { cacheTeamNames, getTeamNames, getCachedTeamNames } from '@/lib/team-cache';
+import { processGameForPlayerStats, extractPlayerName } from '@/lib/player-service';
 
 /**
  * Helper to get a value from data with multiple possible field names
@@ -107,7 +109,7 @@ function getFirstOddsEntry(arr: unknown): Record<string, unknown> | null {
  *   "Total Points": [{ "handicap": "132.5", "over_od": "1.833", "under_od": "1.833", ... }],
  * }
  */
-function mapN8NFields(data: Record<string, unknown>): LiveGame {
+async function mapN8NFields(data: Record<string, unknown>): Promise<LiveGame> {
   // Debug: Log all field names received periodically
   const fieldNames = Object.keys(data);
   if (Math.random() < 0.1) {
@@ -116,11 +118,41 @@ function mapN8NFields(data: Record<string, unknown>): LiveGame {
 
   // Basic fields
   const eventId = String(getField(data, 'Event ID', 'event_id', 'EventID', 'eventId', 'id') || '');
-  const homeTeam = String(getField(data, 'Home Team', 'home_team', 'HomeTeam', 'homeTeam') || '');
-  const awayTeam = String(getField(data, 'Away Team', 'away_team', 'AwayTeam', 'awayTeam') || '');
-  const homeTeamId = String(getField(data, 'Home Team ID', 'Home team ID', 'home_team_id', 'homeTeamId') || '');
-  const awayTeamId = String(getField(data, 'Away Team ID', 'Away team ID', 'away_team_id', 'awayTeamId') || '');
+  let homeTeam = String(getField(data, 'Home Team', 'home_team', 'HomeTeam', 'homeTeam') || '');
+  let awayTeam = String(getField(data, 'Away Team', 'away_team', 'AwayTeam', 'awayTeam') || '');
+  let homeTeamId = String(getField(data, 'Home Team ID', 'Home team ID', 'home_team_id', 'homeTeamId') || '');
+  let awayTeamId = String(getField(data, 'Away Team ID', 'Away team ID', 'away_team_id', 'awayTeamId') || '');
   const league = String(getField(data, 'League', 'league') || 'NBA2K');
+
+  // If team names are present, cache them for future lookups
+  if (eventId && (homeTeam || awayTeam)) {
+    cacheTeamNames(eventId, homeTeam, awayTeam, homeTeamId, awayTeamId);
+  }
+
+  // If team names are missing, try to look them up
+  if (eventId && !homeTeam && !awayTeam) {
+    // First check cache (fast, in-memory)
+    const cached = getCachedTeamNames(eventId);
+    if (cached) {
+      homeTeam = cached.homeTeam;
+      awayTeam = cached.awayTeam;
+      homeTeamId = cached.homeTeamId || homeTeamId;
+      awayTeamId = cached.awayTeamId || awayTeamId;
+      console.log(`📦 Used cached team names for ${eventId}: ${homeTeam} vs ${awayTeam}`);
+    } else {
+      // Fall back to database lookup
+      const lookedUp = await getTeamNames(eventId);
+      if (lookedUp) {
+        homeTeam = lookedUp.homeTeam;
+        awayTeam = lookedUp.awayTeam;
+        homeTeamId = lookedUp.homeTeamId || homeTeamId;
+        awayTeamId = lookedUp.awayTeamId || awayTeamId;
+        console.log(`📚 Looked up team names for ${eventId}: ${homeTeam} vs ${awayTeam}`);
+      } else {
+        console.log(`⚠️ No team names found for event ${eventId} - will need status webhook`);
+      }
+    }
+  }
 
   // Get odds arrays - look for arrays in the data
   const moneyLineArr = getField(data, 'Money Line', 'MoneyLine', 'money_line');
@@ -299,14 +331,64 @@ async function processGameUpdate(game: LiveGame): Promise<{
       const saved = await saveHistoricalGame(game);
       historicalSaved = saved !== null;
 
+      // Process player stats for both teams
+      try {
+        const homePlayerName = game.homeTeam ? extractPlayerName(game.homeTeam) : null;
+        const awayPlayerName = game.awayTeam ? extractPlayerName(game.awayTeam) : null;
+
+        if (homePlayerName || awayPlayerName) {
+          // Convert LiveGame to format expected by processGameForPlayerStats
+          const homeScore = game.finalScores?.home || game.homeScore;
+          const awayScore = game.finalScores?.away || game.awayScore;
+          const winner = homeScore > awayScore ? 'home' : homeScore < awayScore ? 'away' : 'tie';
+
+          // Calculate spread and total results
+          const spread = game.spread || -3.5;
+          const total = game.total || 185.5;
+          const scoreDiff = homeScore - awayScore;
+          const totalPoints = homeScore + awayScore;
+
+          let spreadResult: 'home_cover' | 'away_cover' | 'push' = 'push';
+          if (scoreDiff > -spread) spreadResult = 'home_cover';
+          else if (scoreDiff < -spread) spreadResult = 'away_cover';
+
+          let totalResult: 'over' | 'under' | 'push' = 'push';
+          if (totalPoints > total) totalResult = 'over';
+          else if (totalPoints < total) totalResult = 'under';
+
+          const gameData = {
+            homeTeam: game.homeTeam,
+            awayTeam: game.awayTeam,
+            winner,
+            finalHomeScore: homeScore,
+            finalAwayScore: awayScore,
+            spreadResult,
+            totalResult,
+            gameDate: new Date().toISOString().split('T')[0],
+          };
+
+          await processGameForPlayerStats(gameData as Parameters<typeof processGameForPlayerStats>[0]);
+          console.log(`📊 Updated player stats: ${homePlayerName} vs ${awayPlayerName}`);
+        }
+      } catch (err) {
+        console.error('Error processing player stats:', err);
+      }
+
       // Close all active signals for this game and send result alerts
       const closedCount = await closeAllSignalsForGame(game);
 
       // REMOVE from live games - final games belong in Historical Games only
       // 1. Remove from in-memory store
       gameStore.removeGame(game.id);
-      // 2. Remove from Airtable Active Games table (async, don't block)
-      deleteGameFromDB(game.eventId).catch(err => console.error('Error deleting game from Airtable:', err));
+      // 2. Remove from Airtable Active Games table (sync - wait for deletion to confirm cleanup)
+      try {
+        const deleted = await deleteGameFromDB(game.eventId);
+        if (deleted) {
+          console.log(`🗑️ Removed game ${game.eventId} from Active Games table`);
+        }
+      } catch (err) {
+        console.error('Error deleting game from Airtable:', err);
+      }
 
       console.log(`🏁 Game finished & removed: ${game.awayTeam} @ ${game.homeTeam} - Closed ${closedCount} signals, Historical: ${historicalSaved}`);
 
@@ -578,7 +660,7 @@ function validateGameData(newGame: LiveGame, existingGame: LiveGame | undefined)
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
-    const gameData = mapN8NFields(data);
+    const gameData = await mapN8NFields(data);
 
     if (!gameData.id) {
       return NextResponse.json({ success: false, error: 'Missing event_id' }, { status: 400 });
@@ -626,7 +708,7 @@ export async function PUT(request: NextRequest) {
 
     const results = await Promise.all(
       games.map(async (game) => {
-        const gameData = mapN8NFields(game);
+        const gameData = await mapN8NFields(game);
         if (!gameData.id) {
           return { success: false, error: 'Missing event_id' };
         }

@@ -23,4 +23,3 @@ describe('Team Cache Service', () => {
         expect(cached).toBeNull();
     });
 });
-});

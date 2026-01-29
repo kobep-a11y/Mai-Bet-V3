@@ -4,7 +4,6 @@ import { discoverPatterns, getPattern, patternToTriggerConditions } from '@/lib/
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
 
-
 /**
  * GET /api/ai/patterns
  * Discover patterns from historical data

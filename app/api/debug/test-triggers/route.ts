@@ -7,7 +7,6 @@ import { LiveGame } from '@/types';
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
 
-
 /**
  * Debug endpoint to test trigger evaluation
  * GET /api/debug/test-triggers

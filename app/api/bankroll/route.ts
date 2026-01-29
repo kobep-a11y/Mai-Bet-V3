@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
 import {
-
-// Force dynamic rendering - don't pre-render at build time
-export const dynamic = 'force-dynamic';
-
   getCurrentBalance,
   getBankrollSummary,
   getTransactions,
@@ -12,6 +8,10 @@ export const dynamic = 'force-dynamic';
   recordBet,
   recordBetResult,
 } from '@/lib/bankroll-service';
+
+// Force dynamic rendering - don't pre-render at build time
+export const dynamic = 'force-dynamic';
+
 
 /**
  * GET /api/bankroll

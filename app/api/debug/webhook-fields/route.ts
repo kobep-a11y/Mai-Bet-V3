@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
 
-
 // Store recent webhook payloads for debugging
 const recentPayloads: { timestamp: string; fields: string[]; sample: Record<string, unknown> }[] = [];
 const MAX_STORED = 10;

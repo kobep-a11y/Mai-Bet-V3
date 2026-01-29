@@ -4,7 +4,6 @@ import { deleteGame, cleanupOldGames } from '@/lib/game-service';
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
 
-
 // Airtable REST API configuration
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;

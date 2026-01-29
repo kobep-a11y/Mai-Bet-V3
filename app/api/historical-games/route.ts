@@ -5,7 +5,6 @@ import { AirtableHistoricalGameFields } from '@/types';
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
 
-
 /**
  * GET - Fetch historical games with optional filters
  */

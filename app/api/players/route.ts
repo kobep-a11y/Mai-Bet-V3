@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-
-// Force dynamic rendering - don't pre-render at build time
-export const dynamic = 'force-dynamic';
-
   getAllPlayers,
   getPlayer,
   getPlayerLeaderboard,
   clearPlayerCache,
 } from '@/lib/player-service';
+
+// Force dynamic rendering - don't pre-render at build time
+export const dynamic = 'force-dynamic';
+
 
 /**
  * GET - Get all players or a single player

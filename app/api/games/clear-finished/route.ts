@@ -4,7 +4,6 @@ import { gameStore } from '@/lib/game-store';
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
 
-
 export async function POST() {
   try {
     const count = gameStore.clearFinishedGames();

@@ -4,7 +4,6 @@ import { fetchStrategies, createStrategy, clearCache } from '@/lib/strategy-serv
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
 
-
 /**
  * GET - Fetch all strategies with their triggers
  */

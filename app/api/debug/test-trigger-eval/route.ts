@@ -7,7 +7,6 @@ import { signalStore } from '@/lib/signal-service';
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
 
-
 /**
  * Debug endpoint to test trigger evaluation
  * GET - Test all active strategies against all live games

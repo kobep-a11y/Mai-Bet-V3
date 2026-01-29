@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
 
-
 /**
  * Comprehensive system debug endpoint
  * Checks all phases and reports status

@@ -19,7 +19,6 @@ import { processGameForPlayerStats, extractPlayerName } from '@/lib/player-servi
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
 
-
 /**
  * Helper to get a value from data with multiple possible field names
  * Handles trailing spaces in field names (common in webhook data)

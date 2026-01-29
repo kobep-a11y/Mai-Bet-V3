@@ -6,12 +6,25 @@ import {
   GameEvaluationContext,
   TriggerEvaluationResult,
   ActiveSignal,
+  Player,
 } from '@/types';
 
 /**
- * Converts a LiveGame into an evaluation context with computed fields
+ * Player stats for evaluation context
  */
-export function createEvaluationContext(game: LiveGame): GameEvaluationContext {
+export interface PlayerStatsForEval {
+  homePlayer: Player | null;
+  awayPlayer: Player | null;
+}
+
+/**
+ * Converts a LiveGame into an evaluation context with computed fields
+ * Now includes player stats for head-to-head comparisons (V2 port)
+ */
+export function createEvaluationContext(
+  game: LiveGame,
+  playerStats?: PlayerStatsForEval
+): GameEvaluationContext {
   const { quarterScores, halftimeScores } = game;
 
   // Parse time remaining to seconds
@@ -25,6 +38,67 @@ export function createEvaluationContext(game: LiveGame): GameEvaluationContext {
 
   const halftimeDifferential = halftimeScores.home - halftimeScores.away;
 
+  // Extract player stats (null if not provided)
+  const homePlayer = playerStats?.homePlayer;
+  const awayPlayer = playerStats?.awayPlayer;
+
+  // Calculate player stat fields
+  const homePlayerWinPct = homePlayer?.winRate ?? null;
+  const awayPlayerWinPct = awayPlayer?.winRate ?? null;
+  const homePlayerPpm = homePlayer?.avgPointsFor ?? null;
+  const awayPlayerPpm = awayPlayer?.avgPointsFor ?? null;
+  const homePlayerGames = homePlayer?.gamesPlayed ?? null;
+  const awayPlayerGames = awayPlayer?.gamesPlayed ?? null;
+
+  // Count wins in recent form (last 10 games)
+  const homePlayerFormWins = homePlayer?.recentForm
+    ? homePlayer.recentForm.filter(r => r === 'W').length
+    : null;
+  const awayPlayerFormWins = awayPlayer?.recentForm
+    ? awayPlayer.recentForm.filter(r => r === 'W').length
+    : null;
+
+  // Head-to-head comparisons (null if either player missing)
+  const winPctDiff = (homePlayerWinPct !== null && awayPlayerWinPct !== null)
+    ? homePlayerWinPct - awayPlayerWinPct
+    : null;
+  const ppmDiff = (homePlayerPpm !== null && awayPlayerPpm !== null)
+    ? homePlayerPpm - awayPlayerPpm
+    : null;
+  const experienceDiff = (homePlayerGames !== null && awayPlayerGames !== null)
+    ? homePlayerGames - awayPlayerGames
+    : null;
+
+  // Dynamic leading/losing team odds
+  const homeLeading = game.homeScore > game.awayScore;
+  const awayLeading = game.awayScore > game.homeScore;
+
+  // Get spread values (home spread is stored, away is inverse)
+  const homeSpread = game.spread ?? null;
+  const awaySpread = homeSpread !== null ? -homeSpread : null;
+
+  // Get moneyline values
+  const homeMoneyline = game.mlHome ?? null;
+  const awayMoneyline = game.mlAway ?? null;
+
+  // Leading/losing team odds (null if tied)
+  let leadingTeamSpread: number | null = null;
+  let losingTeamSpread: number | null = null;
+  let leadingTeamMoneyline: number | null = null;
+  let losingTeamMoneyline: number | null = null;
+
+  if (homeLeading) {
+    leadingTeamSpread = homeSpread;
+    losingTeamSpread = awaySpread;
+    leadingTeamMoneyline = homeMoneyline;
+    losingTeamMoneyline = awayMoneyline;
+  } else if (awayLeading) {
+    leadingTeamSpread = awaySpread;
+    losingTeamSpread = homeSpread;
+    leadingTeamMoneyline = awayMoneyline;
+    losingTeamMoneyline = homeMoneyline;
+  }
+
   return {
     // Direct fields
     quarter: game.quarter,
@@ -35,8 +109,8 @@ export function createEvaluationContext(game: LiveGame): GameEvaluationContext {
     totalScore: game.homeScore + game.awayScore,
     scoreDifferential,
     absScoreDifferential: Math.abs(scoreDifferential),
-    homeLeading: game.homeScore > game.awayScore,
-    awayLeading: game.awayScore > game.homeScore,
+    homeLeading,
+    awayLeading,
     spread: game.spread,
     total: game.total,
     status: game.status,
@@ -44,9 +118,8 @@ export function createEvaluationContext(game: LiveGame): GameEvaluationContext {
     // =========================================
     // FIELD ALIASES - Match Airtable trigger format
     // =========================================
-    // These are the fields used in your Airtable triggers:
-    currentLead: Math.abs(scoreDifferential),         // Alias for absScoreDifferential
-    halftimeLead: Math.abs(halftimeDifferential),     // Absolute halftime lead
+    currentLead: Math.abs(scoreDifferential),
+    halftimeLead: Math.abs(halftimeDifferential),
 
     // Quarter 1
     q1Home: quarterScores.q1Home,
@@ -81,11 +154,43 @@ export function createEvaluationContext(game: LiveGame): GameEvaluationContext {
     // Half totals
     firstHalfTotal,
     secondHalfTotal,
+
+    // =========================================
+    // PLAYER STATS (V2 port)
+    // =========================================
+    homePlayerWinPct,
+    awayPlayerWinPct,
+    homePlayerPpm,
+    awayPlayerPpm,
+    homePlayerGames,
+    awayPlayerGames,
+    homePlayerFormWins,
+    awayPlayerFormWins,
+
+    // HEAD-TO-HEAD COMPARISONS
+    winPctDiff,
+    ppmDiff,
+    experienceDiff,
+
+    // =========================================
+    // DYNAMIC LEADING/LOSING TEAM ODDS
+    // =========================================
+    leadingTeamSpread,
+    losingTeamSpread,
+    leadingTeamMoneyline,
+    losingTeamMoneyline,
+
+    // DIRECT ODDS FIELDS
+    homeSpread,
+    awaySpread,
+    homeMoneyline,
+    awayMoneyline,
   };
 }
 
 /**
  * Evaluates a single condition against the game context
+ * Now handles null values for player stats fields
  */
 export function evaluateCondition(condition: Condition, context: GameEvaluationContext): boolean {
   const fieldValue = context[condition.field as keyof GameEvaluationContext];
@@ -95,35 +200,46 @@ export function evaluateCondition(condition: Condition, context: GameEvaluationC
     return false;
   }
 
+  // Handle null values (player stats not available)
+  if (fieldValue === null) {
+    // For player stat conditions, null means data not available - condition fails
+    console.log(`  [CONDITION] ${condition.field} = null (data not available)`);
+    return false;
+  }
+
   const value = condition.value;
   const value2 = condition.value2;
 
+  // Convert string value to number for numeric comparisons if needed
+  const numericValue = typeof value === 'string' ? parseFloat(value) : value;
+  const numericValue2 = typeof value2 === 'string' ? parseFloat(value2) : value2;
+
   switch (condition.operator) {
     case 'equals':
-      return fieldValue === value;
+      return fieldValue === value || fieldValue === numericValue;
 
     case 'not_equals':
-      return fieldValue !== value;
+      return fieldValue !== value && fieldValue !== numericValue;
 
     case 'greater_than':
-      return typeof fieldValue === 'number' && typeof value === 'number' && fieldValue > value;
+      return typeof fieldValue === 'number' && typeof numericValue === 'number' && fieldValue > numericValue;
 
     case 'less_than':
-      return typeof fieldValue === 'number' && typeof value === 'number' && fieldValue < value;
+      return typeof fieldValue === 'number' && typeof numericValue === 'number' && fieldValue < numericValue;
 
     case 'greater_than_or_equal':
-      return typeof fieldValue === 'number' && typeof value === 'number' && fieldValue >= value;
+      return typeof fieldValue === 'number' && typeof numericValue === 'number' && fieldValue >= numericValue;
 
     case 'less_than_or_equal':
-      return typeof fieldValue === 'number' && typeof value === 'number' && fieldValue <= value;
+      return typeof fieldValue === 'number' && typeof numericValue === 'number' && fieldValue <= numericValue;
 
     case 'between':
       return (
         typeof fieldValue === 'number' &&
-        typeof value === 'number' &&
-        typeof value2 === 'number' &&
-        fieldValue >= value &&
-        fieldValue <= value2
+        typeof numericValue === 'number' &&
+        typeof numericValue2 === 'number' &&
+        fieldValue >= numericValue &&
+        fieldValue <= numericValue2
       );
 
     case 'contains':
@@ -173,11 +289,13 @@ export function evaluateTrigger(
 /**
  * Evaluates a game against a strategy's triggers
  * Returns triggers that fired
+ * Now accepts optional player stats for head-to-head conditions (V2 port)
  */
 export function evaluateStrategy(
   strategy: Strategy,
   game: LiveGame,
-  activeSignals: ActiveSignal[]
+  activeSignals: ActiveSignal[],
+  playerStats?: PlayerStatsForEval
 ): TriggerEvaluationResult[] {
   // Skip if strategy is not active
   if (!strategy.isActive) {
@@ -189,7 +307,7 @@ export function evaluateStrategy(
     return [];
   }
 
-  const context = createEvaluationContext(game);
+  const context = createEvaluationContext(game, playerStats);
   const results: TriggerEvaluationResult[] = [];
 
   // Check if we already have an active signal for this strategy/game combo
@@ -235,16 +353,18 @@ export function evaluateStrategy(
 
 /**
  * Evaluates all strategies against a game
+ * Now accepts optional player stats for head-to-head conditions (V2 port)
  */
 export function evaluateAllStrategies(
   strategies: Strategy[],
   game: LiveGame,
-  activeSignals: ActiveSignal[]
+  activeSignals: ActiveSignal[],
+  playerStats?: PlayerStatsForEval
 ): TriggerEvaluationResult[] {
   const allResults: TriggerEvaluationResult[] = [];
 
   for (const strategy of strategies) {
-    const results = evaluateStrategy(strategy, game, activeSignals);
+    const results = evaluateStrategy(strategy, game, activeSignals, playerStats);
     allResults.push(...results);
   }
 

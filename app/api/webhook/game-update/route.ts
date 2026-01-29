@@ -41,7 +41,7 @@ import { sendBetAvailableAlert } from '@/lib/discord-service';
 import { saveHistoricalGame } from '@/lib/historical-service';
 import { upsertGame, getActiveGames, getGame as getGameFromDB, deleteGame as deleteGameFromDB } from '@/lib/game-service';
 import { cacheTeamNames, getTeamNames, getCachedTeamNames } from '@/lib/team-cache';
-import { processGameForPlayerStats, extractPlayerName } from '@/lib/player-service';
+import { processGameForPlayerStats, extractPlayerName, getPlayersForGame } from '@/lib/player-service';
 import { shouldProcessEvent, startProcessing, finishProcessing, getDebounceStats } from '@/lib/debounce';
 
 // Force dynamic rendering - don't pre-render at build time
@@ -455,10 +455,25 @@ async function processGameUpdate(game: LiveGame): Promise<{
     }
 
     // =========================================
+    // FETCH PLAYER STATS FOR HEAD-TO-HEAD CONDITIONS (V2 port)
+    // =========================================
+    let playerStats: { homePlayer: import('@/types').Player | null; awayPlayer: import('@/types').Player | null } | undefined;
+    if (game.homeTeam && game.awayTeam) {
+      try {
+        playerStats = await getPlayersForGame(game.homeTeam, game.awayTeam);
+        if (playerStats.homePlayer || playerStats.awayPlayer) {
+          console.log(`📊 Player stats loaded: ${playerStats.homePlayer?.name || 'N/A'} (${playerStats.homePlayer?.winRate?.toFixed(1) || 'N/A'}% win) vs ${playerStats.awayPlayer?.name || 'N/A'} (${playerStats.awayPlayer?.winRate?.toFixed(1) || 'N/A'}% win)`);
+        }
+      } catch (err) {
+        console.error('Error fetching player stats:', err);
+      }
+    }
+
+    // =========================================
     // STEP 1: EVALUATE ENTRY TRIGGERS (Create new signals)
     // =========================================
     const activeSignals = signalStore.getAllActiveSignals();
-    const results = evaluateAllStrategies(strategies, game, activeSignals);
+    const results = evaluateAllStrategies(strategies, game, activeSignals, playerStats);
     triggersFireCount = results.length;
 
     for (const result of results) {

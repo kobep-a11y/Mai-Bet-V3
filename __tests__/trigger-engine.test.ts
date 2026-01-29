@@ -54,6 +54,29 @@ describe('Trigger Engine', () => {
                 halftimeDifferential: 0,
                 firstHalfTotal: 84,
                 secondHalfTotal: 61,
+                // Player stats (null = no player data)
+                homePlayerWinPct: null,
+                awayPlayerWinPct: null,
+                homePlayerPpm: null,
+                awayPlayerPpm: null,
+                homePlayerGames: null,
+                awayPlayerGames: null,
+                homePlayerFormWins: null,
+                awayPlayerFormWins: null,
+                // H2H comparison fields
+                winPctDiff: null,
+                ppmDiff: null,
+                experienceDiff: null,
+                // Dynamic leading/losing team fields
+                leadingTeamSpread: -3.5,
+                losingTeamSpread: 3.5,
+                leadingTeamMoneyline: -150,
+                losingTeamMoneyline: 130,
+                // Direct home/away odds
+                homeSpread: -3.5,
+                awaySpread: 3.5,
+                homeMoneyline: -150,
+                awayMoneyline: 130,
             };
 
             const result = evaluateTrigger(trigger, context);
@@ -115,6 +138,29 @@ describe('Trigger Engine', () => {
                 halftimeDifferential: 0,
                 firstHalfTotal: 84,
                 secondHalfTotal: 61,
+                // Player stats (null = no player data)
+                homePlayerWinPct: null,
+                awayPlayerWinPct: null,
+                homePlayerPpm: null,
+                awayPlayerPpm: null,
+                homePlayerGames: null,
+                awayPlayerGames: null,
+                homePlayerFormWins: null,
+                awayPlayerFormWins: null,
+                // H2H comparison fields
+                winPctDiff: null,
+                ppmDiff: null,
+                experienceDiff: null,
+                // Dynamic leading/losing team fields
+                leadingTeamSpread: -3.5,
+                losingTeamSpread: 3.5,
+                leadingTeamMoneyline: -150,
+                losingTeamMoneyline: 130,
+                // Direct home/away odds
+                homeSpread: -3.5,
+                awaySpread: 3.5,
+                homeMoneyline: -150,
+                awayMoneyline: 130,
             };
 
             const result = evaluateTrigger(trigger, context);

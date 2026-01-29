@@ -92,7 +92,36 @@ export type ConditionField =
   | 'q4Home' | 'q4Away' | 'q4Total' | 'q4Differential'
   | 'halftimeHome' | 'halftimeAway' | 'halftimeTotal' | 'halftimeDifferential'
   | 'firstHalfTotal' | 'secondHalfTotal'
-  | 'status';
+  | 'status'
+  // =========================================
+  // PLAYER STATS FIELDS (V2 port)
+  // =========================================
+  | 'homePlayerWinPct'       // Home player win percentage
+  | 'awayPlayerWinPct'       // Away player win percentage
+  | 'homePlayerPpm'          // Home player points per match
+  | 'awayPlayerPpm'          // Away player points per match
+  | 'homePlayerGames'        // Home player games played
+  | 'awayPlayerGames'        // Away player games played
+  | 'homePlayerFormWins'     // Wins in home player's recent form
+  | 'awayPlayerFormWins'     // Wins in away player's recent form
+  // HEAD-TO-HEAD COMPARISON FIELDS
+  | 'winPctDiff'             // homePlayerWinPct - awayPlayerWinPct
+  | 'ppmDiff'                // homePlayerPpm - awayPlayerPpm
+  | 'experienceDiff'         // homePlayerGames - awayPlayerGames
+  // =========================================
+  // DYNAMIC LEADING/LOSING TEAM FIELDS
+  // =========================================
+  | 'leadingTeamSpread'      // Spread for currently leading team
+  | 'losingTeamSpread'       // Spread for currently losing team
+  | 'leadingTeamMoneyline'   // ML for leading team
+  | 'losingTeamMoneyline'    // ML for losing team
+  // =========================================
+  // ODDS FIELDS
+  // =========================================
+  | 'homeSpread'             // Home team spread
+  | 'awaySpread'             // Away team spread
+  | 'homeMoneyline'          // Home team moneyline
+  | 'awayMoneyline';         // Away team moneyline
 
 export interface Condition {
   field: ConditionField | string;
@@ -310,6 +339,37 @@ export interface GameEvaluationContext {
   // Half totals
   firstHalfTotal: number;
   secondHalfTotal: number;
+
+  // =========================================
+  // PLAYER STATS (V2 port)
+  // =========================================
+  homePlayerWinPct: number | null;       // Home player win percentage
+  awayPlayerWinPct: number | null;       // Away player win percentage
+  homePlayerPpm: number | null;          // Home player points per match (avgPointsFor)
+  awayPlayerPpm: number | null;          // Away player points per match
+  homePlayerGames: number | null;        // Home player games played
+  awayPlayerGames: number | null;        // Away player games played
+  homePlayerFormWins: number | null;     // Wins in home player's last 10 games
+  awayPlayerFormWins: number | null;     // Wins in away player's last 10 games
+
+  // HEAD-TO-HEAD COMPARISONS
+  winPctDiff: number | null;             // homePlayerWinPct - awayPlayerWinPct
+  ppmDiff: number | null;                // homePlayerPpm - awayPlayerPpm
+  experienceDiff: number | null;         // homePlayerGames - awayPlayerGames
+
+  // =========================================
+  // DYNAMIC LEADING/LOSING TEAM ODDS
+  // =========================================
+  leadingTeamSpread: number | null;      // Spread for currently leading team
+  losingTeamSpread: number | null;       // Spread for currently losing team
+  leadingTeamMoneyline: number | null;   // Moneyline for leading team
+  losingTeamMoneyline: number | null;    // Moneyline for losing team
+
+  // DIRECT ODDS FIELDS
+  homeSpread: number | null;             // Home team spread
+  awaySpread: number | null;             // Away team spread (typically -homeSpread)
+  homeMoneyline: number | null;          // Home team moneyline
+  awayMoneyline: number | null;          // Away team moneyline
 }
 
 // ============================================

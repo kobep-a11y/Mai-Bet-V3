@@ -49,6 +49,25 @@ export function extractTeamName(fullTeamName: string): string {
 }
 
 /**
+ * Get player stats for both teams in a game
+ * Used by trigger evaluation for head-to-head conditions (V2 port)
+ */
+export async function getPlayersForGame(
+  homeTeam: string,
+  awayTeam: string
+): Promise<{ homePlayer: Player | null; awayPlayer: Player | null }> {
+  const homePlayerName = extractPlayerName(homeTeam);
+  const awayPlayerName = extractPlayerName(awayTeam);
+
+  const [homePlayer, awayPlayer] = await Promise.all([
+    homePlayerName ? getPlayer(homePlayerName) : Promise.resolve(null),
+    awayPlayerName ? getPlayer(awayPlayerName) : Promise.resolve(null),
+  ]);
+
+  return { homePlayer, awayPlayer };
+}
+
+/**
  * Get or create a player from a team name
  * Uses REST API directly to avoid Airtable SDK AbortSignal bug
  */

@@ -167,14 +167,14 @@ export async function upsertGame(game: LiveGame): Promise<void> {
 
 /**
  * Get all active games from Airtable
+ * Returns all games that aren't marked as 'final' status
+ * No time filter - games persist until they finish or are cleaned up
  */
 export async function getActiveGames(): Promise<LiveGame[]> {
   try {
-    // Get games updated in the last 5 minutes (active games)
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-
     const params = new URLSearchParams();
-    params.append('filterByFormula', `AND({Status} != 'final', IS_AFTER({Last Update}, '${fiveMinutesAgo}'))`);
+    // Show all non-final games regardless of when they were last updated
+    params.append('filterByFormula', `{Status} != 'final'`);
     params.append('sort[0][field]', 'Last Update');
     params.append('sort[0][direction]', 'desc');
 

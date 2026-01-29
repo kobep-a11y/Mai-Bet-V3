@@ -134,13 +134,16 @@ export default function LiveGamesPage() {
   };
 
   // Helpers
-  const extractPlayerName = (teamStr: string) => {
-    const match = teamStr?.match(/\(([^)]+)\)/);
-    return match ? match[1] : teamStr;
+  const extractPlayerName = (teamStr: string, fallback: string = '') => {
+    if (!teamStr) return fallback;
+    const match = teamStr.match(/\(([^)]+)\)/);
+    return match ? match[1] : (teamStr || fallback);
   };
 
-  const extractTeamName = (teamStr: string) => {
-    return teamStr?.replace(/\s*\([^)]+\)/, '') || teamStr;
+  const extractTeamName = (teamStr: string, fallback: string = '') => {
+    if (!teamStr) return fallback;
+    const cleaned = teamStr.replace(/\s*\([^)]+\)/, '').trim();
+    return cleaned || fallback;
   };
 
   return (
@@ -253,10 +256,10 @@ export default function LiveGamesPage() {
               const lead = Math.abs(game.homeScore - game.awayScore);
               const hasTrigger = game.status === 'live' && lead >= 10;
 
-              const awayPlayer = extractPlayerName(game.awayTeam);
-              const homePlayer = extractPlayerName(game.homeTeam);
-              const awayTeamName = extractTeamName(game.awayTeam);
-              const homeTeamName = extractTeamName(game.homeTeam);
+              const awayPlayer = extractPlayerName(game.awayTeam, 'Away');
+              const homePlayer = extractPlayerName(game.homeTeam, 'Home');
+              const awayTeamName = extractTeamName(game.awayTeam, 'Away Team');
+              const homeTeamName = extractTeamName(game.homeTeam, 'Home Team');
 
               const isLive = game.status === 'live';
 
@@ -308,8 +311,8 @@ export default function LiveGamesPage() {
                       {/* Lead Indicator */}
                       {lead > 0 && (
                         <div className="flex items-center gap-2 pt-1">
-                          {awayWinning ? <TrendingUp className="w-3 h-3 text-coral-500" /> : <TrendingDown className="w-3 h-3 text-slate-400" />}
-                          <span className={`text-xs font-semibold ${lead === 0 ? 'text-slate-400' : 'text-coral-500'}`}>
+                          {awayWinning ? <TrendingUp className="w-3 h-3 text-sky-500" /> : <TrendingDown className="w-3 h-3 text-slate-400" />}
+                          <span className={`text-xs font-semibold ${lead === 0 ? 'text-slate-400' : 'text-sky-500'}`}>
                             Lead: {lead}
                           </span>
                         </div>
@@ -318,38 +321,38 @@ export default function LiveGamesPage() {
 
                     {/* Betting Lines - Col 7-10 */}
                     <div className="col-span-4 grid grid-cols-3 gap-3">
-                      {/* Spread */}
+                      {/* Spread - Gray theme */}
                       <div className="flex flex-col gap-2">
                         <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#718096' }}>Spread</span>
                         <div className="flex flex-col gap-1">
-                          <span className="odds-badge text-xs">
+                          <span className="odds-badge spread text-xs">
                             {game.spread > 0 ? '+' : ''}{game.spread}
                           </span>
-                          <span className="odds-badge text-xs">
+                          <span className="odds-badge spread text-xs">
                             {game.spread > 0 ? '' : '+'}{-game.spread}
                           </span>
                         </div>
                       </div>
 
-                      {/* Moneyline */}
+                      {/* Moneyline - Blue theme */}
                       <div className="flex flex-col gap-2">
                         <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#718096' }}>ML</span>
                         <div className="flex flex-col gap-1">
-                          <span className={`odds-badge text-xs ${(game.mlAway && game.mlAway > 0) ? 'positive' : 'negative'}`}>
+                          <span className={`odds-badge moneyline text-xs ${(game.mlAway && game.mlAway > 0) ? 'positive' : ''}`}>
                             {game.mlAway || '–'}
                           </span>
-                          <span className={`odds-badge text-xs ${(game.mlHome && game.mlHome > 0) ? 'positive' : 'negative'}`}>
+                          <span className={`odds-badge moneyline text-xs ${(game.mlHome && game.mlHome > 0) ? 'positive' : ''}`}>
                             {game.mlHome || '–'}
                           </span>
                         </div>
                       </div>
 
-                      {/* Total */}
+                      {/* Total - Gray theme */}
                       <div className="flex flex-col gap-2">
                         <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#718096' }}>O/U</span>
                         <div className="flex flex-col gap-1">
-                          <span className="odds-badge text-xs">O {game.total}</span>
-                          <span className="odds-badge text-xs">U {game.total}</span>
+                          <span className="odds-badge total text-xs">O {game.total}</span>
+                          <span className="odds-badge total text-xs">U {game.total}</span>
                         </div>
                       </div>
                     </div>

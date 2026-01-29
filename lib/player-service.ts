@@ -495,7 +495,7 @@ export async function getPlayerLeaderboard(
   }[sortBy] as keyof Player;
 
   return players
-    .filter((p) => p.gamesPlayed >= 5) // Minimum games threshold
+    .filter((p) => p.gamesPlayed >= 1) // At least 1 game played
     .sort((a, b) => (b[sortField] as number) - (a[sortField] as number))
     .slice(0, limit);
 }

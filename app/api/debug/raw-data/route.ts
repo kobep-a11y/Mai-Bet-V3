@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { gameStore } from '@/lib/game-store';
 
+// Force dynamic rendering - don't pre-render at build time
+export const dynamic = 'force-dynamic';
+
+
 /**
  * GET - View raw webhook data from current games
  * This shows exactly what fields are being sent by the webhook

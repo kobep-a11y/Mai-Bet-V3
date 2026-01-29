@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runBacktest, compareStrategies } from '@/lib/backtest-service';
 import { getActiveStrategies, getStrategy } from '@/lib/strategy-service';
 
+// Force dynamic rendering - don't pre-render at build time
+export const dynamic = 'force-dynamic';
+
+
 /**
  * POST - Run a backtest for a specific strategy
  *

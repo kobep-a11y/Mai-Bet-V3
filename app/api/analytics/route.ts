@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 
+// Force dynamic rendering - don't pre-render at build time
+export const dynamic = 'force-dynamic';
+
+
 // Airtable REST API configuration
 // Using REST API instead of SDK to avoid AbortSignal bug on Vercel serverless
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;

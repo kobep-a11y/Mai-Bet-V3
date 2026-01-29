@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getAllSignals } from '@/lib/signal-service';
 
+// Force dynamic rendering - don't pre-render at build time
+export const dynamic = 'force-dynamic';
+
+
 export async function GET() {
   try {
     const signals = await getAllSignals();

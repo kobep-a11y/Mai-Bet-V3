@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchStrategies, createStrategy, clearCache } from '@/lib/strategy-service';
 
+// Force dynamic rendering - don't pre-render at build time
+export const dynamic = 'force-dynamic';
+
+
 /**
  * GET - Fetch all strategies with their triggers
  */

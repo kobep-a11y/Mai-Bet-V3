@@ -3,6 +3,10 @@ import { bulkImportHistoricalGames, getHistoricalGames } from '@/lib/historical-
 import { processGameForPlayerStats, getAllPlayers } from '@/lib/player-service';
 import { AirtableHistoricalGameFields, HistoricalGame } from '@/types';
 
+// Force dynamic rendering - don't pre-render at build time
+export const dynamic = 'force-dynamic';
+
+
 /**
  * POST - Import historical games from JSON data
  *

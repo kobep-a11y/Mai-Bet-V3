@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 
+// Force dynamic rendering - don't pre-render at build time
+export const dynamic = 'force-dynamic';
+
+
 export async function POST() {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Activity, RefreshCw, Bell, Zap, TrendingUp, TrendingDown } from 'lucide-react';
+import { Activity, RefreshCw, Bell, Zap, TrendingUp, TrendingDown, Wifi, WifiOff, Pause, Play } from 'lucide-react';
 import { LiveGame } from '@/types';
 
 interface GameWithMeta extends Omit<LiveGame, 'lastUpdate'> {
@@ -9,21 +9,32 @@ interface GameWithMeta extends Omit<LiveGame, 'lastUpdate'> {
   lastUpdate?: string;
 }
 
+const REFRESH_INTERVAL = 3000; // 3 seconds
+
 export default function LiveGamesPage() {
   const [games, setGames] = useState<GameWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [nextRefreshIn, setNextRefreshIn] = useState(REFRESH_INTERVAL / 1000);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
 
   const prevScoresRef = useRef<Map<string, { home: number; away: number }>>(new Map());
   const [updatedGames, setUpdatedGames] = useState<Set<string>>(new Set());
   const hasGamesRef = useRef(false);
+  const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchGames = useCallback(async () => {
+  const fetchGames = useCallback(async (isManual = false) => {
+    if (isManual) setRefreshing(true);
+    setConnectionStatus('connecting');
+
     try {
       const res = await fetch('/api/webhook/game-update');
       const data = await res.json();
+
       if (data.success && Array.isArray(data.games)) {
+        setConnectionStatus('connected');
         const newGames: GameWithMeta[] = data.games;
         const newUpdated = new Set<string>();
 
@@ -59,21 +70,58 @@ export default function LiveGamesPage() {
           hasGamesRef.current = sortedGames.length > 0;
           setLastUpdate(new Date());
         }
+      } else {
+        setConnectionStatus('disconnected');
       }
     } catch (error) {
       console.error('Failed to fetch games:', error);
+      setConnectionStatus('disconnected');
     } finally {
       setLoading(false);
+      setRefreshing(false);
+      setNextRefreshIn(REFRESH_INTERVAL / 1000);
     }
   }, []);
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
 
+  // Auto-refresh with countdown
   useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = setInterval(fetchGames, 3000);
-    return () => clearInterval(interval);
+    if (!autoRefresh) {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      return;
+    }
+
+    // Countdown timer
+    countdownRef.current = setInterval(() => {
+      setNextRefreshIn(prev => {
+        if (prev <= 1) {
+          fetchGames();
+          return REFRESH_INTERVAL / 1000;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
   }, [autoRefresh, fetchGames]);
+
+  // Pause auto-refresh when tab is not visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setAutoRefresh(false);
+      } else {
+        setAutoRefresh(true);
+        fetchGames();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchGames]);
 
   const addDemoGame = async () => {
     await fetch('/api/games/demo', { method: 'POST' });
@@ -117,13 +165,45 @@ export default function LiveGamesPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {/* Connection Status */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200">
+            {connectionStatus === 'connected' ? (
+              <Wifi className="w-4 h-4 text-green-500" />
+            ) : connectionStatus === 'connecting' ? (
+              <Wifi className="w-4 h-4 text-yellow-500 animate-pulse" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-red-500" />
+            )}
+            <span className="text-xs font-medium text-slate-600">
+              {connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+            </span>
+          </div>
+
+          {/* Auto-refresh toggle */}
           <button
-            onClick={fetchGames}
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors ${
+              autoRefresh
+                ? 'bg-green-50 border-green-200 text-green-700'
+                : 'bg-slate-100 border-slate-200 text-slate-600'
+            }`}
+          >
+            {autoRefresh ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            <span className="text-xs font-medium">
+              {autoRefresh ? `${nextRefreshIn}s` : 'Paused'}
+            </span>
+          </button>
+
+          {/* Manual refresh */}
+          <button
+            onClick={() => fetchGames(true)}
+            disabled={refreshing}
             className="btn btn-secondary"
           >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
+
           <span className="live-indicator">Live</span>
         </div>
       </div>

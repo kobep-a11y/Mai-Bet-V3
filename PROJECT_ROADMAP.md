@@ -1,7 +1,7 @@
 # MAI Bets V3 - Project Roadmap & Progress Tracker
 
 **Last Updated:** January 29, 2026
-**Overall Progress:** ~65% Complete
+**Overall Progress:** ~70% Complete
 
 ---
 
@@ -14,11 +14,39 @@
 | Trigger Engine | ✅ Complete | 100% |
 | Signal Management | 🟡 Mostly Complete | 85% |
 | Player Stats System | ✅ Complete | 100% |
-| Strategy System | 🟡 Partially Complete | 60% |
+| Strategy System | 🟡 Partially Complete | 70% |
 | Alerts & Notifications | 🟡 Partially Complete | 70% |
 | Analytics & Outcomes | 🔴 Needs Work | 30% |
 | AI Features | 🔴 Not Started | 0% |
-| Admin & Utilities | 🔴 Not Started | 10% |
+| Admin & Utilities | 🟡 Partially Complete | 40% |
+| UI/UX | 🟡 In Progress | 85% |
+
+---
+
+## 🔧 RECENT BUG FIXES & IMPROVEMENTS (January 29, 2026)
+
+### Strategy Page - Fixed Triggers Display
+- **Issue:** Individual strategy endpoints (`/api/strategies/[id]`) showed 0 triggers
+- **Root Cause:** `ARRAYJOIN({Strategy})` in Airtable returns record names, not IDs
+- **Fix:** Changed to fetch all triggers and filter by strategy ID in application code
+- **Files Modified:** `app/api/strategies/[id]/route.ts`
+
+### Team Name Caching - Admin Endpoints
+- **Issue:** Live games weren't showing team names
+- **Root Cause:** N8N webhook doesn't send team names, only odds data
+- **Fix:** Created admin endpoints for cache initialization and data backfill
+- **Files Created:**
+  - `app/api/admin/init-team-cache/route.ts` - Initialize team cache on cold start
+  - `app/api/admin/backfill-team-names/route.ts` - Backfill from Historical Games
+- **Note:** N8N workflow should be updated to include "Home Team" and "Away Team" fields
+
+### UI/UX Improvements
+- **Settings Page Contrast:** Fixed dark mode text visibility (gray-500/600 → gray-300/400)
+- **Leading Team Color:** Changed from coral (orange) to sky (blue) for consistency
+- **Odds Badges:** Updated to blue/gray theme with `.spread` and `.total` variants
+- **Files Modified:**
+  - `app/globals.css` - Updated winning/leading team colors and odds badge styles
+  - `app/settings/page.tsx` - Improved text contrast throughout
 
 ---
 
@@ -78,7 +106,7 @@
 - [x] Blowout protection alerts
 - [x] Test message functionality
 
-### UI Dashboard (80%)
+### UI Dashboard (85%)
 - [x] Main dashboard with live games
 - [x] Strategies page
 - [x] Signals page
@@ -86,8 +114,16 @@
 - [x] Bankroll page
 - [x] Analytics page
 - [x] Settings page
+- [x] **Settings page contrast fix** (dark mode readability) ✨ NEW
+- [x] **UI color update** (blue for leading team, blue/gray for odds badges) ✨ NEW
 - [ ] Strategy builder/editor UI
 - [ ] Signal history with trigger timeline
+
+### Admin & Utilities (40%)
+- [x] **Admin team cache initialization** (`/api/admin/init-team-cache`) ✨ NEW
+- [x] **Admin team name backfill** (`/api/admin/backfill-team-names`) ✨ NEW
+- [ ] Data cleanup utilities
+- [ ] Bulk recalculate outcomes
 
 ---
 

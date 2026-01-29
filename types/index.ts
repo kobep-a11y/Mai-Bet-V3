@@ -145,6 +145,214 @@ export interface DiscordWebhook {
   isActive: boolean;
 }
 
+// ============================================
+// MESSAGE TEMPLATE TYPES - Customizable Alerts
+// ============================================
+
+/**
+ * Template types for different notification scenarios
+ */
+export type MessageTemplateType = 'signal' | 'bet_available' | 'game_result' | 'blowout' | 'close';
+
+/**
+ * Message template with customizable placeholders
+ *
+ * Available placeholders:
+ *
+ * Team/Player Info:
+ *   {home_team}          - Full home team name (e.g., "OKC Thunder (KJMR)")
+ *   {away_team}          - Full away team name
+ *   {home_player}        - Home player name only (e.g., "KJMR")
+ *   {away_player}        - Away player name only
+ *   {winning_team}       - Team that won (final result alerts)
+ *   {losing_team}        - Team that lost
+ *   {leading_team}       - Currently leading team
+ *   {trailing_team}      - Currently trailing team
+ *   {bet_team}           - Team being bet on
+ *   {bet_player}         - Player being bet on
+ *
+ * Score Info:
+ *   {home_score}         - Current/final home score
+ *   {away_score}         - Current/final away score
+ *   {total_score}        - Combined score
+ *   {current_lead}       - Current point lead
+ *   {trigger_lead}       - Lead when trigger fired
+ *   {final_lead}         - Final game lead
+ *   {score_display}      - Formatted "away - home" display
+ *
+ * Game State:
+ *   {quarter}            - Current quarter (1-4)
+ *   {game_time}          - Time remaining in quarter
+ *   {status}             - Game status (live, halftime, final)
+ *   {game_id}            - Event ID
+ *
+ * Strategy/Trigger Info:
+ *   {strategy_name}      - Name of strategy
+ *   {trigger_name}       - Name of trigger that fired
+ *   {signal_id}          - Signal ID
+ *
+ * Odds Info:
+ *   {home_spread}        - Current home spread
+ *   {away_spread}        - Current away spread
+ *   {spread}             - Generic spread value
+ *   {total_line}         - Over/under line
+ *   {trigger_home_spread} - Home spread when trigger fired
+ *   {trigger_away_spread} - Away spread when trigger fired
+ *   {required_spread}    - Required spread for bet
+ *   {entry_spread}       - Spread when bet was taken
+ *   {home_ml}            - Home moneyline
+ *   {away_ml}            - Away moneyline
+ *   {leading_team_spread} - Spread for leading team
+ *   {trailing_team_spread} - Spread for trailing team
+ *
+ * Result Info (for close/result alerts):
+ *   {result}             - "WIN", "LOSS", or "PUSH"
+ *   {result_emoji}       - ✅, ❌, or ➖
+ */
+export interface MessageTemplate {
+  type: MessageTemplateType;
+  template: string;
+  format?: 'text' | 'embed'; // Text for SMS, embed for Discord
+}
+
+/**
+ * All available placeholder keys for message templates
+ */
+export type TemplatePlaceholder =
+  // Team/Player
+  | 'home_team'
+  | 'away_team'
+  | 'home_player'
+  | 'away_player'
+  | 'winning_team'
+  | 'losing_team'
+  | 'leading_team'
+  | 'trailing_team'
+  | 'bet_team'
+  | 'bet_player'
+  // Scores
+  | 'home_score'
+  | 'away_score'
+  | 'total_score'
+  | 'current_lead'
+  | 'trigger_lead'
+  | 'final_lead'
+  | 'score_display'
+  // Game State
+  | 'quarter'
+  | 'game_time'
+  | 'status'
+  | 'game_id'
+  // Strategy/Trigger
+  | 'strategy_name'
+  | 'trigger_name'
+  | 'signal_id'
+  // Odds
+  | 'home_spread'
+  | 'away_spread'
+  | 'spread'
+  | 'total_line'
+  | 'trigger_home_spread'
+  | 'trigger_away_spread'
+  | 'required_spread'
+  | 'entry_spread'
+  | 'home_ml'
+  | 'away_ml'
+  | 'leading_team_spread'
+  | 'trailing_team_spread'
+  // Results
+  | 'result'
+  | 'result_emoji';
+
+/**
+ * Context object containing all values for template placeholder replacement
+ */
+export interface TemplateContext {
+  // Team/Player
+  homeTeam?: string;
+  awayTeam?: string;
+  homePlayer?: string;
+  awayPlayer?: string;
+  winningTeam?: string;
+  losingTeam?: string;
+  leadingTeam?: string;
+  trailingTeam?: string;
+  betTeam?: string;
+  betPlayer?: string;
+  // Scores
+  homeScore?: number;
+  awayScore?: number;
+  totalScore?: number;
+  currentLead?: number;
+  triggerLead?: number;
+  finalLead?: number;
+  // Game State
+  quarter?: number;
+  gameTime?: string;
+  status?: string;
+  gameId?: string;
+  // Strategy/Trigger
+  strategyName?: string;
+  triggerName?: string;
+  signalId?: string;
+  // Odds
+  homeSpread?: number;
+  awaySpread?: number;
+  spread?: number;
+  totalLine?: number;
+  triggerHomeSpread?: number;
+  triggerAwaySpread?: number;
+  requiredSpread?: number;
+  entrySpread?: number;
+  homeMl?: number;
+  awayMl?: number;
+  leadingTeamSpread?: number;
+  trailingTeamSpread?: number;
+  // Results
+  result?: 'win' | 'loss' | 'push';
+}
+
+// ============================================
+// RULE TYPES - Strategy Execution Rules
+// ============================================
+
+export type RuleType =
+  | 'first_half_only'      // Block if Q > 2
+  | 'second_half_only'     // Block if Q < 3
+  | 'specific_quarter'     // Block if not in specific quarter
+  | 'exclude_overtime'     // Block if Q > 4
+  | 'stop_at'              // Block after Q + time (e.g., Q4 2:20)
+  | 'minimum_score';       // Block if total score < threshold
+
+export interface Rule {
+  type: RuleType;
+  value?: number | string;  // e.g., quarter number, "Q4 2:20", score threshold
+}
+
+// ============================================
+// WIN REQUIREMENT TYPES - Outcome Determination
+// ============================================
+
+/**
+ * Win Requirement Types for determining bet outcomes
+ * These define HOW a bet wins/loses based on final game state
+ *
+ * Difference from OddsRequirement:
+ * - OddsRequirement: Determines WHEN to take a bet (spread alignment)
+ * - WinRequirement: Determines IF the bet WON based on game result
+ */
+export type WinRequirementType =
+  | 'leading_team_wins'    // Leading team at signal time must win game
+  | 'home_wins'            // Home team must win
+  | 'away_wins'            // Away team must win
+  | 'final_lead_gte'       // Final lead must be >= threshold
+  | 'final_lead_lte';      // Final lead must be <= threshold
+
+export interface WinRequirement {
+  type: WinRequirementType;
+  value?: number;  // For final_lead_gte/lte (e.g., 5 means "must win by 5+")
+}
+
 export interface Strategy {
   id: string;
   name: string;
@@ -156,6 +364,15 @@ export interface Strategy {
 
   // Odds requirement for two-stage system
   oddsRequirement?: OddsRequirement;
+
+  // Strategy execution rules
+  rules?: Rule[];
+
+  // Win requirements for outcome determination
+  winRequirements?: WinRequirement[];
+
+  // Custom message templates
+  messageTemplates?: MessageTemplate[];
 
   // Strategy metadata
   expiryTimeQ4?: string;  // When to expire (e.g., "2:20" means 2:20 left in Q4)
@@ -250,6 +467,10 @@ export interface Signal {
   leadingTeamAtTrigger?: 'home' | 'away';
   leadingTeamSpreadAtEntry?: number;
 
+  // Win requirements (stored at signal creation for outcome calculation)
+  winRequirements?: WinRequirement[];
+  leadMarginAtTrigger?: number;  // Lead amount when signal was created (for final_lead_* requirements)
+
   // Final results
   finalHomeScore?: number;
   finalAwayScore?: number;
@@ -258,6 +479,9 @@ export interface Signal {
   profitLoss?: number;
   notes?: string;
   createdAt: string;
+
+  // Trigger history (for tracking sequential triggers)
+  triggerHistory?: TriggerHistoryEntry[];  // Complete history of triggers that led to this signal
 }
 
 // Active signals tracking (in-memory)
@@ -275,6 +499,44 @@ export interface ActiveSignal {
   leadingTeamAtTrigger?: 'home' | 'away';  // Who was leading when conditions met
   requiredSpread?: number;           // What spread is needed for this strategy
   oddsCheckStartTime?: string;       // When we started watching for odds
+
+  // Trigger history tracking (for sequential evaluation)
+  triggerSnapshots: TriggerSnapshot[];       // All trigger snapshots that led to this signal
+  lastTriggerSnapshot?: TriggerSnapshot;     // Most recent trigger snapshot (for prev_leader_* calculations)
+}
+
+// ============================================
+// TRIGGER SNAPSHOT & HISTORY TYPES
+// ============================================
+
+/**
+ * Snapshot of game state when a trigger fires
+ * Used for tracking previous trigger states in sequential evaluation
+ */
+export interface TriggerSnapshot {
+  triggerId: string;
+  triggerName: string;
+  timestamp: string;
+  quarter: number;
+  timeRemaining: string;
+  homeScore: number;
+  awayScore: number;
+  leadingTeam: 'home' | 'away' | 'tie';
+  leadAmount: number;
+  homeSpread?: number;
+  awaySpread?: number;
+  totalLine?: number;
+}
+
+/**
+ * Entry in the trigger history array
+ * Tracks each trigger that fired in the sequence leading to a signal
+ */
+export interface TriggerHistoryEntry {
+  triggerId: string;
+  triggerName: string;
+  timestamp: string;
+  snapshot: TriggerSnapshot;
 }
 
 // ============================================
@@ -370,6 +632,16 @@ export interface GameEvaluationContext {
   awaySpread: number | null;             // Away team spread (typically -homeSpread)
   homeMoneyline: number | null;          // Home team moneyline
   awayMoneyline: number | null;          // Away team moneyline
+
+  // =========================================
+  // PREVIOUS LEADER FIELDS (for sequential modes)
+  // Reference V2: lines 1314-1358
+  // =========================================
+  prev_leader_still_leads: number | null;      // 1 if prev trigger's leader still leads, 0 otherwise
+  prev_leader_current_score: number | null;    // Current score of prev leader
+  prev_trailer_current_score: number | null;   // Current score of prev trailer
+  prev_leader_current_margin: number | null;   // Current margin from prev leader's perspective
+  prev_leader_was_home: number | null;         // 1 if prev leader was home team, 0 otherwise
 }
 
 // ============================================
@@ -513,6 +785,9 @@ export interface AirtableStrategyFields {
   'Bet Side'?: BetSide;            // leading_team, trailing_team, home, away
   'Expiry Time Q4'?: string;       // e.g., "2:20"
   'Is Two Stage'?: boolean;        // Does strategy have entry + close triggers?
+  Rules?: string;                  // JSON string of Rule[]
+  'Win Requirements'?: string;     // JSON string of WinRequirement[]
+  'Message Templates'?: string;    // JSON string of MessageTemplate[]
 }
 
 export interface AirtableTriggerFields {
@@ -559,6 +834,13 @@ export interface AirtableSignalFields {
   'Actual Spread At Entry'?: number; // Spread when bet was available
   'Leading Team At Trigger'?: 'home' | 'away';
   'Leading Team Spread'?: number;   // Leading team's spread when bet taken
+
+  // Trigger history tracking
+  'Trigger History'?: string;       // JSON string of TriggerHistoryEntry[]
+
+  // Win requirements tracking (for auto-outcome calculation)
+  'Win Requirements'?: string;      // JSON string of WinRequirement[]
+  'Lead Margin At Trigger'?: number; // Lead amount when signal was created
 }
 
 export interface AirtableHistoricalGameFields {
@@ -588,4 +870,197 @@ export interface AirtableHistoricalGameFields {
   'Total Result'?: 'over' | 'under' | 'push';
   'Game Date'?: string;
   'Raw Data'?: string;
+}
+
+// ============================================
+// TIMELINE SNAPSHOTS - For backtesting
+// ============================================
+
+/**
+ * Snapshot Type - when the snapshot was captured
+ */
+export type TimelineSnapshotType =
+  | 'game_start'   // Captured when game first appears
+  | 'quarter_end'  // End of Q1, Q3, Q4
+  | 'halftime'     // End of Q2
+  | 'game_end'     // Final game state
+  | 'periodic'     // Regular interval snapshots
+  | 'odds_update'; // Significant odds movement
+
+/**
+ * Player stats at snapshot time (for backtesting)
+ */
+export interface PlayerStatsSnapshot {
+  playerName: string;
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  avgPointsFor: number;
+  avgPointsAgainst: number;
+  recentForm: string; // JSON array as string
+  streakType: 'W' | 'L';
+  streakCount: number;
+}
+
+/**
+ * Timeline Snapshot - game state at a point in time
+ */
+export interface TimelineSnapshot {
+  id?: string;
+  eventId: string;
+  snapshotType: TimelineSnapshotType;
+  timestamp: string;
+
+  // Game state
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  quarter: number;
+  timeRemaining: string;
+  status: 'scheduled' | 'live' | 'halftime' | 'final';
+
+  // Odds at this point
+  spread?: number;
+  total?: number;
+  mlHome?: number;
+  mlAway?: number;
+
+  // Opening odds (only set on game_start snapshot)
+  openingSpread?: number;
+  openingTotal?: number;
+  openingMlHome?: number;
+  openingMlAway?: number;
+
+  // Player stats at snapshot time
+  homePlayerStats?: PlayerStatsSnapshot;
+  awayPlayerStats?: PlayerStatsSnapshot;
+
+  // Metadata
+  notes?: string;
+}
+
+/**
+ * Airtable fields for Timeline Snapshots table
+ *
+ * Table Schema:
+ * - Name (Primary): eventId-snapshotType-timestamp
+ * - Event ID (Text): Game event ID
+ * - Snapshot Type (Single Select): game_start, quarter_end, halftime, game_end, periodic, odds_update
+ * - Timestamp (Date/Time): When snapshot was captured
+ * - Home Team (Text): Home team name
+ * - Away Team (Text): Away team name
+ * - Home Score (Number): Home team score
+ * - Away Score (Number): Away team score
+ * - Quarter (Number): Current quarter (1-4, 5 for OT)
+ * - Time Remaining (Text): Time remaining in quarter (e.g., "5:30")
+ * - Status (Single Select): scheduled, live, halftime, final
+ * - Spread (Number): Current spread
+ * - Total (Number): Current total line
+ * - ML Home (Number): Home moneyline
+ * - ML Away (Number): Away moneyline
+ * - Opening Spread (Number): Opening spread
+ * - Opening Total (Number): Opening total line
+ * - Opening ML Home (Number): Opening home moneyline
+ * - Opening ML Away (Number): Opening away moneyline
+ * - Home Player Stats (Long Text): JSON string of PlayerStatsSnapshot
+ * - Away Player Stats (Long Text): JSON string of PlayerStatsSnapshot
+ * - Notes (Long Text): Additional notes
+ */
+export interface AirtableTimelineSnapshotFields {
+  Name: string; // eventId-snapshotType-timestamp
+  'Event ID': string;
+  'Snapshot Type': TimelineSnapshotType;
+  Timestamp: string;
+
+  // Game state
+  'Home Team'?: string;
+  'Away Team'?: string;
+  'Home Score'?: number;
+  'Away Score'?: number;
+  Quarter?: number;
+  'Time Remaining'?: string;
+  Status?: 'scheduled' | 'live' | 'halftime' | 'final';
+
+  // Current odds
+  Spread?: number;
+  Total?: number;
+  'ML Home'?: number;
+  'ML Away'?: number;
+
+  // Opening odds
+  'Opening Spread'?: number;
+  'Opening Total'?: number;
+  'Opening ML Home'?: number;
+  'Opening ML Away'?: number;
+
+  // Player stats (stored as JSON strings)
+  'Home Player Stats'?: string;
+  'Away Player Stats'?: string;
+
+  Notes?: string;
+}
+
+// ============================================
+// SMS TYPES - SMS Notifications
+// ============================================
+
+/**
+ * SMS Alert Types that can be subscribed to
+ */
+export type SMSAlertType = 'bet_available' | 'game_result' | 'blowout';
+
+/**
+ * SMS Recipient - A person who can receive SMS notifications
+ *
+ * Airtable Table: SMS Recipients
+ * - Name (Primary): Recipient name
+ * - Phone (Text): Phone number (E.164 format recommended, e.g., +1234567890)
+ * - Is Active (Checkbox): Whether recipient should receive messages
+ */
+export interface SMSRecipient {
+  id: string;
+  name: string;
+  phone: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+/**
+ * SMS Subscription - Links a recipient to a strategy for specific alert types
+ *
+ * Airtable Table: SMS Subscriptions
+ * - Name (Primary/Formula): Auto-generated from recipient + strategy
+ * - Recipient ID (Link to SMS Recipients): Which recipient
+ * - Strategy ID (Link to Strategies): Which strategy
+ * - Alert Types (Long Text): JSON array of alert types, e.g., ["bet_available", "game_result"]
+ * - Is Active (Checkbox): Whether subscription is active
+ */
+export interface SMSSubscription {
+  id: string;
+  recipientId: string;
+  strategyId: string;
+  alertTypes: SMSAlertType[];
+  isActive: boolean;
+}
+
+/**
+ * Airtable fields for SMS Recipients table
+ */
+export interface AirtableSMSRecipientFields {
+  Name: string;
+  Phone: string;
+  'Is Active'?: boolean;
+}
+
+/**
+ * Airtable fields for SMS Subscriptions table
+ */
+export interface AirtableSMSSubscriptionFields {
+  Name?: string;
+  'Recipient ID': string[]; // Link to SMS Recipients
+  'Strategy ID': string[];  // Link to Strategies
+  'Alert Types'?: string;   // JSON array of SMSAlertType
+  'Is Active'?: boolean;
 }

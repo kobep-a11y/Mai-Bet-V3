@@ -77,6 +77,12 @@ describe('Trigger Engine', () => {
                 awaySpread: 3.5,
                 homeMoneyline: -150,
                 awayMoneyline: 130,
+                // Previous leader fields (for sequential modes)
+                prev_leader_still_leads: null,
+                prev_leader_current_score: null,
+                prev_trailer_current_score: null,
+                prev_leader_current_margin: null,
+                prev_leader_was_home: null,
             };
 
             const result = evaluateTrigger(trigger, context);
@@ -161,6 +167,12 @@ describe('Trigger Engine', () => {
                 awaySpread: 3.5,
                 homeMoneyline: -150,
                 awayMoneyline: 130,
+                // Previous leader fields (for sequential modes)
+                prev_leader_still_leads: null,
+                prev_leader_current_score: null,
+                prev_trailer_current_score: null,
+                prev_leader_current_margin: null,
+                prev_leader_was_home: null,
             };
 
             const result = evaluateTrigger(trigger, context);

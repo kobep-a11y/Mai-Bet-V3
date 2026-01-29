@@ -116,7 +116,7 @@ export default function SettingsPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-sm text-gray-500">Configure and test your integrations</p>
+          <p className="text-sm text-gray-400">Configure and test your integrations</p>
         </div>
       </div>
 
@@ -130,7 +130,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-lg">Airtable Connection</h3>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-400">
                   Database for strategies, triggers, signals, and historical data
                 </p>
               </div>
@@ -157,10 +157,10 @@ export default function SettingsPage() {
           <ResultBanner result={airtableResult} />
 
           <div className="mt-6 space-y-3">
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-gray-800/50">
+            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-gray-700/50">
               <div>
-                <span className="text-xs text-gray-500 uppercase tracking-wider">API Key</span>
-                <p className="text-sm font-mono text-gray-400">
+                <span className="text-xs text-gray-400 uppercase tracking-wider">API Key</span>
+                <p className="text-sm font-mono text-gray-300">
                   {process.env.NEXT_PUBLIC_AIRTABLE_API_KEY
                     ? '••••••••' + process.env.NEXT_PUBLIC_AIRTABLE_API_KEY.slice(-8)
                     : 'Configured via environment variable'}
@@ -168,10 +168,10 @@ export default function SettingsPage() {
               </div>
               <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">ENV</span>
             </div>
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-gray-800/50">
+            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-gray-700/50">
               <div>
-                <span className="text-xs text-gray-500 uppercase tracking-wider">Base ID</span>
-                <p className="text-sm font-mono text-gray-400">
+                <span className="text-xs text-gray-400 uppercase tracking-wider">Base ID</span>
+                <p className="text-sm font-mono text-gray-300">
                   {process.env.NEXT_PUBLIC_AIRTABLE_BASE_ID || 'Configured via environment variable'}
                 </p>
               </div>
@@ -179,13 +179,13 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="mt-4 flex items-center gap-2 text-xs text-gray-500">
+          <div className="mt-4 flex items-center gap-2 text-xs text-gray-400">
             <ExternalLink className="w-3 h-3" />
             <a
               href="https://airtable.com/create/tokens"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-purple-400 transition-colors"
+              className="hover:text-sky-400 transition-colors"
             >
               Get your Airtable API key
             </a>
@@ -201,7 +201,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-lg">Discord Webhook</h3>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-400">
                   Send signal alerts to your Discord channel
                 </p>
               </div>
@@ -228,10 +228,10 @@ export default function SettingsPage() {
           <ResultBanner result={discordResult} />
 
           <div className="mt-6">
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-gray-800/50">
+            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-gray-700/50">
               <div>
-                <span className="text-xs text-gray-500 uppercase tracking-wider">Webhook URL</span>
-                <p className="text-sm font-mono text-gray-400">
+                <span className="text-xs text-gray-400 uppercase tracking-wider">Webhook URL</span>
+                <p className="text-sm font-mono text-gray-300">
                   {process.env.NEXT_PUBLIC_DISCORD_WEBHOOK_URL
                     ? process.env.NEXT_PUBLIC_DISCORD_WEBHOOK_URL.slice(0, 50) + '...'
                     : 'Configured via environment variable'}
@@ -241,13 +241,13 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="mt-4 flex items-center gap-2 text-xs text-gray-500">
+          <div className="mt-4 flex items-center gap-2 text-xs text-gray-400">
             <ExternalLink className="w-3 h-3" />
             <a
               href="https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-purple-400 transition-colors"
+              className="hover:text-sky-400 transition-colors"
             >
               Learn about Discord webhooks
             </a>
@@ -262,35 +262,35 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="font-semibold text-lg">N8N Webhook Endpoints</h3>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-400">
                 Configure N8N to send game updates to these URLs
               </p>
             </div>
           </div>
 
           <div className="space-y-4">
-            <div className="p-4 bg-black/20 rounded-lg border border-gray-800/50">
+            <div className="p-4 bg-black/20 rounded-lg border border-gray-700/50">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-500 uppercase tracking-wider">Single Game Update</span>
+                <span className="text-xs text-gray-400 uppercase tracking-wider">Single Game Update</span>
                 <span className="text-xs bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded">POST</span>
               </div>
               <code className="text-sm font-mono text-emerald-400">
                 /api/webhook/game-update
               </code>
-              <p className="text-xs text-gray-600 mt-2">
+              <p className="text-xs text-gray-400 mt-2">
                 Send individual game data as it updates
               </p>
             </div>
 
-            <div className="p-4 bg-black/20 rounded-lg border border-gray-800/50">
+            <div className="p-4 bg-black/20 rounded-lg border border-gray-700/50">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-500 uppercase tracking-wider">Batch Update</span>
-                <span className="text-xs bg-blue-500/15 text-blue-400 px-2 py-0.5 rounded">PUT</span>
+                <span className="text-xs text-gray-400 uppercase tracking-wider">Batch Update</span>
+                <span className="text-xs bg-sky-500/15 text-sky-400 px-2 py-0.5 rounded">PUT</span>
               </div>
-              <code className="text-sm font-mono text-blue-400">
+              <code className="text-sm font-mono text-sky-400">
                 /api/webhook/game-update
               </code>
-              <p className="text-xs text-gray-600 mt-2">
+              <p className="text-xs text-gray-400 mt-2">
                 Send an array of game updates at once
               </p>
             </div>
@@ -301,7 +301,7 @@ export default function SettingsPage() {
               <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5" />
               <div>
                 <p className="text-sm text-amber-400 font-medium">Auto-cleanup enabled</p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-400 mt-1">
                   Live games that don&apos;t receive updates for 20 seconds are automatically removed.
                   Finished games persist until manually cleared.
                 </p>
@@ -313,8 +313,8 @@ export default function SettingsPage() {
         {/* Expected Payload Format */}
         <div className="card p-6">
           <h3 className="font-semibold text-lg mb-4">Expected Payload Format</h3>
-          <div className="bg-black/30 rounded-lg p-4 font-mono text-xs overflow-x-auto border border-gray-800/50">
-            <pre className="text-gray-400">
+          <div className="bg-black/30 rounded-lg p-4 font-mono text-xs overflow-x-auto border border-gray-700/50">
+            <pre className="text-gray-300">
 {`{
   "Event ID": "12345",
   "Home Team": "LA Lakers",

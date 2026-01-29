@@ -5,7 +5,8 @@ import { getActiveStrategies } from '@/lib/strategy-service';
 import { sendGameResultAlert } from '@/lib/discord-service';
 import { saveHistoricalGame } from '@/lib/historical-service';
 import { processGameForPlayerStats, extractPlayerName } from '@/lib/player-service';
-import { Signal, LiveGame, Strategy, HistoricalGame } from '@/types';
+import { evaluateOutcome, formatOutcomeResult } from '@/lib/outcome-service';
+import { Signal, LiveGame, Strategy, HistoricalGame, WinRequirement } from '@/types';
 
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
@@ -154,6 +155,17 @@ async function getSignalsNeedingResults(gameId: string): Promise<Signal[]> {
 
     return records.map((record) => {
       const fields = record.fields;
+
+      // Parse win requirements if stored on the signal
+      let winRequirements: WinRequirement[] | undefined;
+      if (fields['Win Requirements']) {
+        try {
+          winRequirements = JSON.parse(fields['Win Requirements'] as string);
+        } catch {
+          console.warn(`Failed to parse win requirements for signal ${record.id}`);
+        }
+      }
+
       return {
         id: record.id,
         strategyId: Array.isArray(fields['Strategy']) ? (fields['Strategy'] as string[])[0] : '',
@@ -178,6 +190,8 @@ async function getSignalsNeedingResults(gameId: string): Promise<Signal[]> {
         actualSpreadAtEntry: fields['Actual Spread At Entry'] as number | undefined,
         leadingTeamAtTrigger: fields['Leading Team At Trigger'] as 'home' | 'away' | undefined,
         leadingTeamSpreadAtEntry: fields['Leading Team Spread'] as number | undefined,
+        leadMarginAtTrigger: fields['Lead Margin At Trigger'] as number | undefined,
+        winRequirements,
         status: (fields['Status'] as Signal['status']) || 'bet_taken',
         createdAt: record.createdTime || '',
       } as Signal;
@@ -208,6 +222,40 @@ async function updateSignalResult(
           'Final Home Score': game.finalScores?.home || game.homeScore,
           'Final Away Score': game.finalScores?.away || game.awayScore,
           Notes: `Game ended. Final: ${game.awayScore}-${game.homeScore}. Result: ${result.toUpperCase()}`,
+        },
+      }),
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error('Error updating signal result:', error);
+    return false;
+  }
+}
+
+/**
+ * Update signal with detailed outcome evaluation result
+ * Includes summary from win requirement evaluation
+ */
+async function updateSignalResultWithDetails(
+  signalId: string,
+  game: LiveGame,
+  outcomeResult: import('@/lib/outcome-service').OutcomeEvaluationResult
+): Promise<boolean> {
+  try {
+    const result = outcomeResult.outcome;
+    const finalStatus = result === 'win' ? 'won' : result === 'loss' ? 'lost' : 'pushed';
+    const resultEmoji = result === 'win' ? '✅' : result === 'loss' ? '❌' : '➖';
+
+    const response = await airtableRequest('Signals', `/${signalId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        fields: {
+          Status: finalStatus,
+          Result: result,
+          'Final Home Score': game.finalScores?.home || game.homeScore,
+          'Final Away Score': game.finalScores?.away || game.awayScore,
+          Notes: `${resultEmoji} ${result.toUpperCase()}: ${outcomeResult.summary}. Final: ${game.awayScore}-${game.homeScore}`,
         },
       }),
     });
@@ -253,11 +301,15 @@ async function processFinishedGame(game: LiveGame): Promise<{
         continue;
       }
 
-      // Calculate result
-      const result = calculateBetResult(signal, game, strategy);
+      // Calculate result using the outcome service (supports both WinRequirements and OddsRequirements)
+      const outcomeResult = evaluateOutcome(signal, game, strategy);
+      const result = outcomeResult.outcome;
 
-      // Update signal in Airtable
-      const updated = await updateSignalResult(signal.id, game, result);
+      // Log the outcome evaluation
+      console.log(formatOutcomeResult(signal, outcomeResult));
+
+      // Update signal in Airtable with detailed notes
+      const updated = await updateSignalResultWithDetails(signal.id, game, outcomeResult);
       if (updated) {
         signalsProcessed++;
 

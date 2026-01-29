@@ -7,7 +7,10 @@ import {
   AirtableSignalFields,
   Strategy,
   OddsRequirement,
+  TriggerSnapshot,
+  TriggerHistoryEntry,
 } from '@/types';
+import { createTriggerSnapshot } from '@/lib/trigger-engine';
 
 // Airtable REST API configuration
 // Using REST API instead of SDK to avoid AbortSignal bug on Vercel serverless
@@ -246,6 +249,9 @@ export async function createSignal(
     // Determine initial status
     const initialStatus: SignalStatus = isTwoStage ? 'monitoring' : 'watching';
 
+    // Calculate lead margin at trigger time (for win requirements)
+    const leadMarginAtTrigger = Math.abs(game.homeScore - game.awayScore);
+
     // Create the signal in Airtable using REST API
     const response = await airtableRequest('', {
       method: 'POST',
@@ -270,6 +276,11 @@ export async function createSignal(
           'Entry Total': game.total,
           'Required Spread': strategy.oddsRequirement?.value,
           'Leading Team At Trigger': leadingTeam.team,
+          'Lead Margin At Trigger': leadMarginAtTrigger,
+          // Store win requirements if defined on the strategy (for auto-outcome calculation)
+          ...(strategy.winRequirements && strategy.winRequirements.length > 0
+            ? { 'Win Requirements': JSON.stringify(strategy.winRequirements) }
+            : {}),
           Status: initialStatus,
           Notes: `Entry trigger: ${trigger.name} fired at Q${game.quarter} ${game.timeRemaining}. ${isTwoStage ? 'Waiting for close trigger.' : 'Waiting for odds.'}`,
         } as Partial<AirtableSignalFields>,
@@ -303,11 +314,16 @@ export async function createSignal(
       entryTotal: game.total,
       requiredSpread: strategy.oddsRequirement?.value,
       leadingTeamAtTrigger: leadingTeam.team,
+      leadMarginAtTrigger,
+      winRequirements: strategy.winRequirements,
       status: initialStatus,
       createdAt: now,
     };
 
-    // Track as active signal
+    // Create the initial trigger snapshot
+    const entrySnapshot = createTriggerSnapshot(trigger, game);
+
+    // Track as active signal with trigger snapshot
     signalStore.addActiveSignal({
       signalId: record.id,
       strategyId: strategy.id,
@@ -320,6 +336,8 @@ export async function createSignal(
       leadingTeamAtTrigger: leadingTeam.team,
       requiredSpread: strategy.oddsRequirement?.value,
       oddsCheckStartTime: isTwoStage ? undefined : now,
+      triggerSnapshots: [entrySnapshot],
+      lastTriggerSnapshot: entrySnapshot,
     });
 
     const statusEmoji = initialStatus === 'monitoring' ? '🔵' : '🟡';
@@ -334,11 +352,17 @@ export async function createSignal(
 /**
  * Updates signal when close trigger fires (Stage 2 for two-stage strategies)
  * This moves the signal from 'monitoring' to 'watching'
+ *
+ * @param strategyId - The strategy ID
+ * @param gameId - The game ID
+ * @param game - The current game state
+ * @param trigger - Optional trigger info for snapshot (if not provided, a generic close snapshot is created)
  */
 export async function onCloseTriggerFired(
   strategyId: string,
   gameId: string,
-  game: LiveGame
+  game: LiveGame,
+  trigger?: { id: string; name: string }
 ): Promise<boolean> {
   const activeSignal = signalStore.getActiveSignal(strategyId, gameId);
   if (!activeSignal) {
@@ -354,6 +378,15 @@ export async function onCloseTriggerFired(
 
   try {
     const now = new Date().toISOString();
+
+    // Create the close trigger snapshot
+    const closeSnapshot = createTriggerSnapshot(
+      trigger || { id: 'close', name: 'Close Trigger' },
+      game
+    );
+
+    // Add snapshot to the array
+    const updatedSnapshots = [...(activeSignal.triggerSnapshots || []), closeSnapshot];
 
     // Update Airtable using REST API
     const response = await airtableRequest(`/${activeSignal.signalId}`, {
@@ -372,12 +405,14 @@ export async function onCloseTriggerFired(
       return false;
     }
 
-    // Update local tracking
+    // Update local tracking with new snapshot
     signalStore.updateActiveSignal(strategyId, gameId, {
       stage: 'watching',
       closeTriggerFired: true,
       awaitingClose: false,
       oddsCheckStartTime: now,
+      triggerSnapshots: updatedSnapshots,
+      lastTriggerSnapshot: closeSnapshot,
     });
 
     console.log(`🟡 Signal moved to watching: Strategy ${strategyId} game ${gameId}`);
@@ -447,7 +482,21 @@ export async function checkWatchingSignalsForOdds(
 }
 
 /**
+ * Build trigger history from snapshots
+ * Converts the array of TriggerSnapshots into TriggerHistoryEntry format
+ */
+function buildTriggerHistory(snapshots: TriggerSnapshot[]): TriggerHistoryEntry[] {
+  return snapshots.map(snapshot => ({
+    triggerId: snapshot.triggerId,
+    triggerName: snapshot.triggerName,
+    timestamp: snapshot.timestamp,
+    snapshot: snapshot,
+  }));
+}
+
+/**
  * Mark signal as bet_taken when odds align
+ * Builds and stores the complete trigger history in Airtable
  */
 export async function markBetTaken(
   strategyId: string,
@@ -464,7 +513,10 @@ export async function markBetTaken(
     const now = new Date().toISOString();
     const leadingSpread = getLeadingTeamSpread(game);
 
-    // Update Airtable using REST API
+    // Build the complete trigger history
+    const triggerHistory = buildTriggerHistory(activeSignal.triggerSnapshots || []);
+
+    // Update Airtable using REST API - include trigger history
     const response = await airtableRequest(`/${activeSignal.signalId}`, {
       method: 'PATCH',
       body: JSON.stringify({
@@ -473,7 +525,8 @@ export async function markBetTaken(
           'Odds Aligned Time': now,
           'Actual Spread At Entry': leadingSpread.spread,
           'Leading Team Spread': leadingSpread.spread,
-          Notes: `✅ BET AVAILABLE at Q${game.quarter} ${game.timeRemaining}. Spread: ${leadingSpread.spread} (required: ${strategy.oddsRequirement?.value})`,
+          'Trigger History': JSON.stringify(triggerHistory),
+          Notes: `✅ BET AVAILABLE at Q${game.quarter} ${game.timeRemaining}. Spread: ${leadingSpread.spread} (required: ${strategy.oddsRequirement?.value}). Triggers: ${triggerHistory.length}`,
         } as Partial<AirtableSignalFields>,
       }),
     });
@@ -486,7 +539,7 @@ export async function markBetTaken(
     // Remove from active tracking (bet is taken)
     signalStore.removeActiveSignal(strategyId, gameId);
 
-    console.log(`🟢 BET TAKEN: ${strategy.name} - Spread ${leadingSpread.spread} for ${game.awayTeam} @ ${game.homeTeam}`);
+    console.log(`🟢 BET TAKEN: ${strategy.name} - Spread ${leadingSpread.spread} for ${game.awayTeam} @ ${game.homeTeam} (${triggerHistory.length} triggers in history)`);
 
     return {
       id: activeSignal.signalId,
@@ -495,6 +548,7 @@ export async function markBetTaken(
       gameId,
       status: 'bet_taken',
       actualSpreadAtEntry: leadingSpread.spread,
+      triggerHistory,
     } as Signal;
   } catch (error) {
     console.error('Error marking bet taken:', error);
@@ -679,6 +733,16 @@ export async function getAllSignals(): Promise<Signal[]> {
         profitLoss: fields['Profit Loss'],
         notes: fields.Notes,
         createdAt: record.createdTime || '',
+        // Parse trigger history from JSON string
+        triggerHistory: fields['Trigger History']
+          ? (() => {
+              try {
+                return JSON.parse(fields['Trigger History']);
+              } catch {
+                return undefined;
+              }
+            })()
+          : undefined,
       };
     });
   } catch (error) {

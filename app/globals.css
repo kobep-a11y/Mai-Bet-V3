@@ -321,26 +321,59 @@ body {
   border: 1px solid var(--border-color);
 }
 
-/* Odds Badge (Pill-shaped) */
+/* Odds Badge (Pill-shaped) - Blue/Gray theme */
 .odds-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.25);
   border-radius: 999px;
   padding: 6px 14px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
   font-weight: 600;
-  color: var(--indigo-600);
+  color: var(--sky-600);
   transition: all 0.2s ease;
 }
 
 .odds-badge:hover {
-  background: rgba(99, 102, 241, 0.15);
-  border-color: var(--indigo-400);
+  background: rgba(56, 189, 248, 0.15);
+  border-color: var(--sky-400);
   transform: scale(1.05);
+}
+
+/* Gray variant for contrast (spread) */
+.odds-badge.spread {
+  background: rgba(100, 116, 139, 0.1);
+  border-color: rgba(100, 116, 139, 0.25);
+  color: #475569;
+}
+
+.dark .odds-badge.spread {
+  background: rgba(148, 163, 184, 0.15);
+  border-color: rgba(148, 163, 184, 0.25);
+  color: #94A3B8;
+}
+
+/* Moneyline badge - blue */
+.odds-badge.moneyline {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.25);
+  color: var(--sky-600);
+}
+
+/* Total badge - gray */
+.odds-badge.total {
+  background: rgba(100, 116, 139, 0.1);
+  border-color: rgba(100, 116, 139, 0.25);
+  color: #475569;
+}
+
+.dark .odds-badge.total {
+  background: rgba(148, 163, 184, 0.15);
+  border-color: rgba(148, 163, 184, 0.25);
+  color: #94A3B8;
 }
 
 .odds-badge.positive {
@@ -413,7 +446,7 @@ body {
 }
 
 .score-value.winning {
-  color: var(--coral-500);
+  color: var(--sky-500);
 }
 
 .score-value.losing {
@@ -430,7 +463,7 @@ body {
   }
   50% {
     transform: scale(1.2);
-    color: var(--coral-500);
+    color: var(--sky-500);
   }
 }
 
@@ -438,7 +471,7 @@ body {
   font-weight: 700;
   font-size: 18px;
   font-family: 'Outfit', sans-serif;
-  color: var(--coral-500);
+  color: var(--sky-500);
 }
 
 .lead-value.lead-zero {
@@ -559,7 +592,7 @@ body {
 }
 
 .team-name.winning {
-  color: var(--coral-500);
+  color: var(--sky-500);
   font-weight: 700;
 }
 
@@ -671,7 +704,7 @@ body {
     background: transparent;
   }
   50% {
-    background: rgba(251, 146, 60, 0.08);
+    background: rgba(56, 189, 248, 0.08);
   }
 }
 

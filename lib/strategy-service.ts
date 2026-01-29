@@ -5,6 +5,8 @@ import {
   DiscordWebhook,
   OddsRequirement,
   BetSide,
+  Rule,
+  WinRequirement,
   AirtableStrategyFields,
   AirtableTriggerFields,
 } from '@/types';
@@ -138,6 +140,26 @@ export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]>
         }
       }
 
+      // Parse Rules from JSON string
+      let rules: Rule[] | undefined;
+      if (fields.Rules) {
+        try {
+          rules = JSON.parse(fields.Rules);
+        } catch {
+          console.warn(`Failed to parse rules for strategy ${record.id}`);
+        }
+      }
+
+      // Parse Win Requirements from JSON string
+      let winRequirements: WinRequirement[] | undefined;
+      if (fields['Win Requirements']) {
+        try {
+          winRequirements = JSON.parse(fields['Win Requirements']);
+        } catch {
+          console.warn(`Failed to parse win requirements for strategy ${record.id}`);
+        }
+      }
+
       // Get triggers for this strategy
       const triggers = triggersByStrategy.get(record.id) || [];
 
@@ -178,6 +200,8 @@ export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]>
         triggers: triggers.sort((a, b) => a.order - b.order),
         discordWebhooks,
         oddsRequirement,
+        rules,
+        winRequirements,
         isTwoStage,
         expiryTimeQ4: fields['Expiry Time Q4'] || '2:20',
         createdAt: record.createdTime || '',

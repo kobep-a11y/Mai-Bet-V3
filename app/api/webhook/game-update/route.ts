@@ -29,7 +29,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { gameStore } from '@/lib/game-store';
 import { LiveGame } from '@/types';
 import { getActiveStrategies } from '@/lib/strategy-service';
-import { evaluateAllStrategies, formatTriggerResult } from '@/lib/trigger-engine';
+import { evaluateAllStrategies, formatTriggerResult, passesRules } from '@/lib/trigger-engine';
 import {
   signalStore,
   createSignal,
@@ -37,8 +37,9 @@ import {
   onCloseTriggerFired,
   checkWatchingSignalsForOdds,
 } from '@/lib/signal-service';
-import { sendBetAvailableAlert } from '@/lib/discord-service';
+import { sendBetAvailableAlert, sendGameResultAlert } from '@/lib/discord-service';
 import { saveHistoricalGame } from '@/lib/historical-service';
+import { evaluateOutcome, formatOutcomeResult } from '@/lib/outcome-service';
 import { upsertGame, getActiveGames, getGame as getGameFromDB, deleteGame as deleteGameFromDB } from '@/lib/game-service';
 import { cacheTeamNames, getTeamNames, getCachedTeamNames } from '@/lib/team-cache';
 import { processGameForPlayerStats, extractPlayerName, getPlayersForGame } from '@/lib/player-service';
@@ -46,6 +47,132 @@ import { shouldProcessEvent, startProcessing, finishProcessing, getDebounceStats
 
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
+
+// Airtable REST API configuration for signal updates
+const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
+
+import { Signal, WinRequirement } from '@/types';
+
+/**
+ * Fetch signals with bet_taken status for a specific game
+ * These are the signals that need outcome calculation
+ */
+async function fetchBetTakenSignalsForGame(gameId: string): Promise<Signal[]> {
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    console.error('Missing Airtable credentials');
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams();
+    params.append('filterByFormula', `AND({Game ID} = '${gameId}', {Status} = 'bet_taken')`);
+
+    const response = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/Signals?${params.toString()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error('Error fetching bet_taken signals:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const records = data.records || [];
+
+    return records.map((record: { id: string; fields: Record<string, unknown>; createdTime?: string }) => {
+      const fields = record.fields;
+
+      // Parse win requirements if stored
+      let winRequirements: WinRequirement[] | undefined;
+      if (fields['Win Requirements']) {
+        try {
+          winRequirements = JSON.parse(fields['Win Requirements'] as string);
+        } catch {
+          // Ignore parse error
+        }
+      }
+
+      return {
+        id: record.id,
+        strategyId: Array.isArray(fields['Strategy']) ? (fields['Strategy'] as string[])[0] : '',
+        strategyName: (fields['Strategy Name'] as string) || 'Unknown',
+        triggerId: (fields['Trigger ID'] as string) || '',
+        triggerName: (fields['Trigger Name'] as string) || 'Unknown',
+        gameId: (fields['Game ID'] as string) || '',
+        eventId: (fields['Event ID'] as string) || '',
+        homeTeam: (fields['Home Team'] as string) || '',
+        awayTeam: (fields['Away Team'] as string) || '',
+        homeScore: (fields['Home Score'] as number) || 0,
+        awayScore: (fields['Away Score'] as number) || 0,
+        quarter: (fields['Quarter'] as number) || 0,
+        timeRemaining: (fields['Time Remaining'] as string) || '',
+        entryTime: (fields['Entry Time'] as string) || '',
+        entrySpread: fields['Entry Spread'] as number | undefined,
+        entryTotal: fields['Entry Total'] as number | undefined,
+        actualSpreadAtEntry: fields['Actual Spread At Entry'] as number | undefined,
+        leadingTeamAtTrigger: fields['Leading Team At Trigger'] as 'home' | 'away' | undefined,
+        leadMarginAtTrigger: fields['Lead Margin At Trigger'] as number | undefined,
+        winRequirements,
+        status: 'bet_taken' as const,
+        createdAt: record.createdTime || '',
+      } as Signal;
+    });
+  } catch (error) {
+    console.error('Error fetching bet_taken signals:', error);
+    return [];
+  }
+}
+
+/**
+ * Update a signal with its calculated outcome
+ */
+async function updateSignalOutcome(
+  signalId: string,
+  game: LiveGame,
+  outcome: 'win' | 'loss' | 'push',
+  summary: string
+): Promise<boolean> {
+  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+    return false;
+  }
+
+  try {
+    const finalStatus = outcome === 'win' ? 'won' : outcome === 'loss' ? 'lost' : 'pushed';
+    const resultEmoji = outcome === 'win' ? '✅' : outcome === 'loss' ? '❌' : '➖';
+
+    const response = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/Signals/${signalId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fields: {
+            Status: finalStatus,
+            Result: outcome,
+            'Final Home Score': game.finalScores?.home || game.homeScore,
+            'Final Away Score': game.finalScores?.away || game.awayScore,
+            Notes: `${resultEmoji} ${outcome.toUpperCase()}: ${summary}. Final: ${game.awayScore}-${game.homeScore}`,
+          },
+        }),
+      }
+    );
+
+    return response.ok;
+  } catch (error) {
+    console.error('Error updating signal outcome:', error);
+    return false;
+  }
+}
 
 /**
  * Helper to get a value from data with multiple possible field names
@@ -422,7 +549,35 @@ async function processGameUpdate(game: LiveGame): Promise<{
         console.error('Error processing player stats:', err);
       }
 
-      // Close all active signals for this game and send result alerts
+      // Calculate outcomes for bet_taken signals and send result alerts
+      let outcomesCalculated = 0;
+      try {
+        // Fetch signals that have bet_taken status for this game
+        const betTakenSignals = await fetchBetTakenSignalsForGame(game.id);
+
+        for (const signal of betTakenSignals) {
+          const strategy = strategies.find((s) => s.id === signal.strategyId);
+
+          // Evaluate outcome using win requirements
+          const outcomeResult = evaluateOutcome(signal, game, strategy);
+
+          console.log(formatOutcomeResult(signal, outcomeResult));
+
+          // Update signal in Airtable
+          await updateSignalOutcome(signal.id, game, outcomeResult.outcome, outcomeResult.summary);
+          outcomesCalculated++;
+
+          // Send Discord notification
+          if (strategy) {
+            const alertCount = await sendGameResultAlert(signal, strategy, game, outcomeResult.outcome);
+            discordAlertsSent += alertCount;
+          }
+        }
+      } catch (err) {
+        console.error('Error calculating outcomes:', err);
+      }
+
+      // Close all remaining active signals for this game (expire any still monitoring/watching)
       const closedCount = await closeAllSignalsForGame(game);
 
       // REMOVE from live games - final games belong in Historical Games only
@@ -470,10 +625,27 @@ async function processGameUpdate(game: LiveGame): Promise<{
     }
 
     // =========================================
+    // STEP 0: FILTER STRATEGIES BY RULES
+    // =========================================
+    // Check rules for each strategy and filter out those that don't pass
+    const strategiesPassingRules = strategies.filter(strategy => {
+      const rulesCheck = passesRules(strategy.rules, game);
+      if (!rulesCheck.passed) {
+        console.log(`🚫 Strategy "${strategy.name}" blocked by rule: ${rulesCheck.reason}`);
+        return false;
+      }
+      return true;
+    });
+
+    if (strategiesPassingRules.length < strategies.length) {
+      console.log(`📋 Rules filtered ${strategies.length - strategiesPassingRules.length} strategies (${strategiesPassingRules.length} remaining)`);
+    }
+
+    // =========================================
     // STEP 1: EVALUATE ENTRY TRIGGERS (Create new signals)
     // =========================================
     const activeSignals = signalStore.getAllActiveSignals();
-    const results = evaluateAllStrategies(strategies, game, activeSignals, playerStats);
+    const results = evaluateAllStrategies(strategiesPassingRules, game, activeSignals, playerStats);
     triggersFireCount = results.length;
 
     for (const result of results) {
@@ -493,7 +665,11 @@ async function processGameUpdate(game: LiveGame): Promise<{
       if (trigger.entryOrClose === 'close') {
         console.log(`⚡ Close trigger: ${formatTriggerResult(result)}`);
 
-        const success = await onCloseTriggerFired(strategy.id, game.id, game);
+        // Pass trigger info for snapshot creation
+        const success = await onCloseTriggerFired(strategy.id, game.id, game, {
+          id: trigger.id,
+          name: trigger.name,
+        });
         if (success) {
           closeTriggersProcessed++;
         }
@@ -503,12 +679,12 @@ async function processGameUpdate(game: LiveGame): Promise<{
     // =========================================
     // STEP 2: CHECK WATCHING SIGNALS FOR ODDS ALIGNMENT
     // =========================================
-    const betsTaken = await checkWatchingSignalsForOdds(game, strategies);
+    const betsTaken = await checkWatchingSignalsForOdds(game, strategiesPassingRules);
     betsAvailable = betsTaken.length;
 
     // Send Discord alerts for each bet that became available
     for (const signal of betsTaken) {
-      const strategy = strategies.find(s => s.id === signal.strategyId);
+      const strategy = strategiesPassingRules.find(s => s.id === signal.strategyId);
       if (strategy) {
         const alertsSent = await sendBetAvailableAlert(signal, strategy, game);
         discordAlertsSent += alertsSent;

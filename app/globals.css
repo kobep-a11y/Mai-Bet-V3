@@ -197,57 +197,21 @@ body {
 }
 
 .game-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(56, 189, 248, 0.15), 0 4px 12px rgba(99, 102, 241, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-/* Animated Gradient Border for Live Games */
+/* Live Games - Simple border, no animation */
 .game-card-live {
   position: relative;
   background: var(--bg-secondary);
   border-radius: 20px;
   padding: 20px 24px;
   margin-bottom: 12px;
-  overflow: hidden;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.game-card-live::before {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
-  background: linear-gradient(
-    90deg,
-    var(--sky-400) 0%,
-    var(--indigo-500) 50%,
-    var(--sky-400) 100%
-  );
-  background-size: 200% 100%;
-  border-radius: 22px;
-  z-index: -1;
-  animation: borderFlow 3s linear infinite;
-  opacity: 0.5;
-}
-
-.game-card-live:hover::before {
-  opacity: 0.8;
+  border: 2px solid var(--sky-400);
 }
 
 .game-card-live:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(56, 189, 248, 0.2), 0 0 48px rgba(99, 102, 241, 0.15);
-}
-
-@keyframes borderFlow {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 200% 50%;
-  }
+  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.1);
 }
 
 /* ============================================

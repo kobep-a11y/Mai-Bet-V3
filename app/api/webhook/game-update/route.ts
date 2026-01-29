@@ -1,3 +1,30 @@
+/**
+ * ============================================================================
+ * GAME UPDATE WEBHOOK - SINGLE UNIFIED ENDPOINT
+ * ============================================================================
+ *
+ * This is the ONLY webhook endpoint needed for game updates.
+ *
+ * ARCHITECTURE:
+ * - One webhook sends ALL data: game info, scores, time, AND odds
+ * - No need for separate odds webhooks or game status webhooks
+ * - Debouncing prevents duplicate processing (5-second window per Event ID)
+ * - Locking prevents race conditions from concurrent requests
+ *
+ * EXPECTED PAYLOAD FORMAT:
+ * {
+ *   "Event ID": "11344362",
+ *   "Home Team": "NY Knicks (PLAYER_NAME)",
+ *   "Away Team": "LA Lakers (PLAYER_NAME)",
+ *   "Money Line": [{ "home_od": "1.5", "away_od": "2.8", "ss": "55:42", "time_str": "3 - 06:00" }],
+ *   "Spread": [{ "handicap": "-7.5", "home_od": "1.91", "away_od": "1.91", "ss": "55:42" }],
+ *   "Total Points": [{ "handicap": "190.5", "over_od": "1.91", "under_od": "1.91" }]
+ * }
+ *
+ * The "ss" field contains score (home:away), "time_str" contains quarter and time.
+ * ============================================================================
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { gameStore } from '@/lib/game-store';
 import { LiveGame } from '@/types';

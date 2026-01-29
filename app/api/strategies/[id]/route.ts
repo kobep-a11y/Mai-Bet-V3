@@ -53,8 +53,9 @@ export async function GET(
     const fields = record.fields as unknown as AirtableStrategyFields;
 
     // Fetch triggers for this strategy
+    // Note: We fetch all triggers and filter in code because ARRAYJOIN returns
+    // record names, not IDs, making SEARCH unreliable for linked record filtering
     const triggerParams = new URLSearchParams();
-    triggerParams.append('filterByFormula', `SEARCH("${id}", ARRAYJOIN({Strategy}))`);
     triggerParams.append('sort[0][field]', 'Order');
     triggerParams.append('sort[0][direction]', 'asc');
 
@@ -62,7 +63,12 @@ export async function GET(
     let triggerRecords: AirtableRecord[] = [];
     if (triggerResponse.ok) {
       const triggerData = await triggerResponse.json();
-      triggerRecords = triggerData.records || [];
+      const allTriggers = triggerData.records || [];
+      // Filter triggers that belong to this strategy (Strategy field contains array of linked record IDs)
+      triggerRecords = allTriggers.filter((tr: AirtableRecord) => {
+        const strategyIds = (tr.fields as unknown as AirtableTriggerFields).Strategy || [];
+        return strategyIds.includes(id);
+      });
     }
 
     const triggers: StrategyTrigger[] = triggerRecords.map((tr) => {

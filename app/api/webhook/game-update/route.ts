@@ -15,6 +15,7 @@ import { saveHistoricalGame } from '@/lib/historical-service';
 import { upsertGame, getActiveGames, getGame as getGameFromDB, deleteGame as deleteGameFromDB } from '@/lib/game-service';
 import { cacheTeamNames, getTeamNames, getCachedTeamNames } from '@/lib/team-cache';
 import { processGameForPlayerStats, extractPlayerName } from '@/lib/player-service';
+import { shouldProcessEvent, startProcessing, finishProcessing, getDebounceStats } from '@/lib/debounce';
 
 // Force dynamic rendering - don't pre-render at build time
 export const dynamic = 'force-dynamic';
@@ -686,32 +687,65 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing event_id' }, { status: 400 });
     }
 
-    // Get existing game data and validate (check memory first, then DB)
-    let existingGame = gameStore.getGame(gameData.id);
-    if (!existingGame) {
-      existingGame = await getGameFromDB(gameData.id) || undefined;
+    // DEBOUNCE: Check if we should process this event
+    const debounceResult = shouldProcessEvent(gameData.id);
+    if (!debounceResult.shouldProcess) {
+      console.log(`⏸️ Debounced webhook for ${gameData.id}: ${debounceResult.reason}`);
+      return NextResponse.json({
+        success: true,
+        message: 'Debounced - duplicate webhook within time window',
+        gameId: gameData.id,
+        debounced: true,
+        reason: debounceResult.reason,
+      });
     }
-    const { correctedGame, corrections } = validateGameData(gameData, existingGame);
 
-    // Update both in-memory store AND Airtable for persistence
-    gameStore.updateGame(correctedGame.id, correctedGame);
+    // LOCK: Prevent concurrent processing of same event
+    if (!startProcessing(gameData.id)) {
+      console.log(`🔒 Blocked concurrent processing for ${gameData.id}`);
+      return NextResponse.json({
+        success: true,
+        message: 'Already processing this event',
+        gameId: gameData.id,
+        blocked: true,
+      });
+    }
 
-    // Save to Airtable (async, don't block response)
-    upsertGame(correctedGame).catch(err => console.error('Airtable upsert error:', err));
+    try {
+      // Get existing game data and validate (check memory first, then DB)
+      let existingGame = gameStore.getGame(gameData.id);
+      if (!existingGame) {
+        existingGame = await getGameFromDB(gameData.id) || undefined;
+      }
+      const { correctedGame, corrections } = validateGameData(gameData, existingGame);
 
-    console.log(`Game updated: ${correctedGame.id} - ${correctedGame.homeTeam} vs ${correctedGame.awayTeam} (Q${correctedGame.quarter} ${correctedGame.timeRemaining})${corrections.length > 0 ? ' [CORRECTED]' : ''}`);
+      // Update both in-memory store AND Airtable for persistence
+      gameStore.updateGame(correctedGame.id, correctedGame);
 
-    // Process triggers, signals, alerts
-    const processResult = await processGameUpdate(correctedGame);
+      // Save to Airtable - AWAIT to prevent race conditions
+      try {
+        await upsertGame(correctedGame);
+      } catch (err) {
+        console.error('Airtable upsert error:', err);
+      }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Game updated',
-      gameId: correctedGame.id,
-      game: correctedGame,
-      processing: processResult,
-      corrections: corrections.length > 0 ? corrections : undefined,
-    });
+      console.log(`Game updated: ${correctedGame.id} - ${correctedGame.homeTeam} vs ${correctedGame.awayTeam} (Q${correctedGame.quarter} ${correctedGame.timeRemaining})${corrections.length > 0 ? ' [CORRECTED]' : ''}`);
+
+      // Process triggers, signals, alerts
+      const processResult = await processGameUpdate(correctedGame);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Game updated',
+        gameId: correctedGame.id,
+        game: correctedGame,
+        processing: processResult,
+        corrections: corrections.length > 0 ? corrections : undefined,
+      });
+    } finally {
+      // Always release lock
+      finishProcessing(gameData.id);
+    }
   } catch (error) {
     console.error('Error in POST game-update:', error);
     return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
@@ -726,13 +760,38 @@ export async function PUT(request: NextRequest) {
     const data = await request.json();
     const games = Array.isArray(data) ? data : [data];
 
-    const results = await Promise.all(
-      games.map(async (game) => {
-        const gameData = await mapN8NFields(game);
-        if (!gameData.id) {
-          return { success: false, error: 'Missing event_id' };
-        }
+    // Process sequentially to prevent race conditions
+    const results = [];
+    for (const game of games) {
+      const gameData = await mapN8NFields(game);
+      if (!gameData.id) {
+        results.push({ success: false, error: 'Missing event_id' });
+        continue;
+      }
 
+      // DEBOUNCE: Check if we should process this event
+      const debounceResult = shouldProcessEvent(gameData.id);
+      if (!debounceResult.shouldProcess) {
+        results.push({
+          id: gameData.id,
+          success: true,
+          debounced: true,
+          reason: debounceResult.reason,
+        });
+        continue;
+      }
+
+      // LOCK: Prevent concurrent processing
+      if (!startProcessing(gameData.id)) {
+        results.push({
+          id: gameData.id,
+          success: true,
+          blocked: true,
+        });
+        continue;
+      }
+
+      try {
         // Get existing game data and validate (check memory first, then DB)
         let existingGame = gameStore.getGame(gameData.id);
         if (!existingGame) {
@@ -742,32 +801,42 @@ export async function PUT(request: NextRequest) {
 
         gameStore.updateGame(correctedGame.id, correctedGame);
 
-        // Save to Airtable (async, don't block)
-        upsertGame(correctedGame).catch(err => console.error('Airtable upsert error:', err));
+        // Save to Airtable - AWAIT to prevent race conditions
+        try {
+          await upsertGame(correctedGame);
+        } catch (err) {
+          console.error('Airtable upsert error:', err);
+        }
 
         const processResult = await processGameUpdate(correctedGame);
 
-        return {
+        results.push({
           id: correctedGame.id,
           success: true,
           ...processResult,
           corrections: corrections.length > 0 ? corrections : undefined,
-        };
-      })
-    );
+        });
+      } finally {
+        finishProcessing(gameData.id);
+      }
+    }
 
     const totalTriggers = results.reduce((sum, r) => sum + ('triggersFireCount' in r ? r.triggersFireCount : 0), 0);
     const totalSignals = results.reduce((sum, r) => sum + ('signalsCreated' in r ? r.signalsCreated : 0), 0);
     const totalCloseProcessed = results.reduce((sum, r) => sum + ('closeTriggersProcessed' in r ? r.closeTriggersProcessed : 0), 0);
     const totalBets = results.reduce((sum, r) => sum + ('betsAvailable' in r ? r.betsAvailable : 0), 0);
     const totalAlerts = results.reduce((sum, r) => sum + ('discordAlertsSent' in r ? r.discordAlertsSent : 0), 0);
+    const debounced = results.filter(r => 'debounced' in r && r.debounced).length;
+    const blocked = results.filter(r => 'blocked' in r && r.blocked).length;
 
     return NextResponse.json({
       success: true,
-      message: `${results.length} games updated`,
+      message: `${results.length} games processed (${debounced} debounced, ${blocked} blocked)`,
       results,
       summary: {
-        gamesUpdated: results.length,
+        gamesProcessed: results.length,
+        gamesDebounced: debounced,
+        gamesBlocked: blocked,
         triggersFireCount: totalTriggers,
         signalsCreated: totalSignals,
         closeTriggersProcessed: totalCloseProcessed,
@@ -797,5 +866,13 @@ export async function GET() {
     games = dbGames;
   }
 
-  return NextResponse.json({ success: true, count: games.length, games });
+  // Include debounce stats for debugging
+  const debounceStats = getDebounceStats();
+
+  return NextResponse.json({
+    success: true,
+    count: games.length,
+    games,
+    debounceStats,
+  });
 }

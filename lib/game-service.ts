@@ -38,13 +38,13 @@ interface AirtableRecord {
 /**
  * Upsert a game - create if doesn't exist, update if it does
  * Preserves constant data (team names) if new values are empty
+ * IMPORTANT: Handles duplicate records by updating the first and cleaning up extras
  */
 export async function upsertGame(game: LiveGame): Promise<void> {
   try {
-    // Check if game exists
+    // Check if game exists - fetch ALL matching records to handle duplicates
     const params = new URLSearchParams();
     params.append('filterByFormula', `{Event ID} = '${game.eventId}'`);
-    params.append('maxRecords', '1');
 
     const response = await airtableRequest(`?${params.toString()}`);
     if (!response.ok) {
@@ -53,7 +53,20 @@ export async function upsertGame(game: LiveGame): Promise<void> {
     }
 
     const data = await response.json();
-    const existingRecords = data.records || [];
+    const existingRecords: AirtableRecord[] = data.records || [];
+
+    // If we have duplicates, clean them up (keep the first, delete the rest)
+    if (existingRecords.length > 1) {
+      console.log(`⚠️ Found ${existingRecords.length} duplicate records for event ${game.eventId}, cleaning up...`);
+      for (let i = 1; i < existingRecords.length; i++) {
+        try {
+          await airtableRequest(`/${existingRecords[i].id}`, { method: 'DELETE' });
+        } catch (err) {
+          console.error(`Error deleting duplicate ${existingRecords[i].id}:`, err);
+        }
+      }
+    }
+
     const existingFields = existingRecords[0]?.fields || {};
 
     // Build game data, preserving existing team names if new values are empty

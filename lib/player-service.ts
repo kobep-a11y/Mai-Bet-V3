@@ -72,12 +72,23 @@ export async function getOrCreatePlayer(fullTeamName: string): Promise<Player | 
     // Try to find existing player via REST API
     const searchParams = new URLSearchParams();
     searchParams.append('filterByFormula', `{Name} = '${playerName}'`);
-    searchParams.append('maxRecords', '1');
 
     const searchResponse = await airtableRequest(`?${searchParams.toString()}`);
     const searchResult = await searchResponse.json();
 
     if (searchResponse.ok && searchResult.records?.length > 0) {
+      // Clean up duplicates if found
+      if (searchResult.records.length > 1) {
+        console.log(`⚠️ Found ${searchResult.records.length} duplicate players for ${playerName}, cleaning up...`);
+        for (let i = 1; i < searchResult.records.length; i++) {
+          try {
+            await airtableRequest(`/${searchResult.records[i].id}`, { method: 'DELETE' });
+          } catch (err) {
+            console.error(`Error deleting duplicate player ${searchResult.records[i].id}:`, err);
+          }
+        }
+      }
+
       const player = mapRecordToPlayer(searchResult.records[0]);
       playersCache.set(playerName, player);
       return player;

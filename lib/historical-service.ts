@@ -31,17 +31,36 @@ async function airtableRequest(
 /**
  * Check if a game already exists in Airtable by event ID
  * This is essential for serverless environments where in-memory cache resets
+ * Also cleans up any duplicate records found
  */
 async function gameExistsInAirtable(eventId: string): Promise<boolean> {
   try {
     const params = new URLSearchParams();
     params.append('filterByFormula', `{Name} = '${eventId}'`);
-    params.append('maxRecords', '1');
 
     const response = await airtableRequest(`?${params.toString()}`);
     const result = await response.json();
 
-    return response.ok && result.records && result.records.length > 0;
+    if (!response.ok) {
+      console.error('Error checking for existing game:', response.status);
+      return false;
+    }
+
+    const records = result.records || [];
+
+    // Clean up duplicates if found
+    if (records.length > 1) {
+      console.log(`⚠️ Found ${records.length} duplicate historical games for ${eventId}, cleaning up...`);
+      for (let i = 1; i < records.length; i++) {
+        try {
+          await airtableRequest(`/${records[i].id}`, { method: 'DELETE' });
+        } catch (err) {
+          console.error(`Error deleting duplicate ${records[i].id}:`, err);
+        }
+      }
+    }
+
+    return records.length > 0;
   } catch (error) {
     console.error('Error checking for existing game:', error);
     return false; // On error, allow save attempt (Airtable will reject true duplicates)

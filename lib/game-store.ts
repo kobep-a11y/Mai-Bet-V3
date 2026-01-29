@@ -20,23 +20,34 @@ class GameStore {
     });
   }
 
-  getGame(id: string): GameWithMeta | undefined {
-    return this.games.get(id);
+  getGame(id: string): LiveGame | undefined {
+    const game = this.games.get(id);
+    if (!game) return undefined;
+
+    // Strip internal metadata, return only LiveGame fields
+    const { createdAt, ...liveGame } = game;
+    return liveGame;
   }
 
-  getAllGames(): GameWithMeta[] {
+  getAllGames(): LiveGame[] {
     // Remove stale games first
     this.removeStaleGames();
 
-    return Array.from(this.games.values()).sort((a, b) => {
-      // Sort by: status priority, then by eventId for STABLE ordering
-      const statusOrder: Record<string, number> = { live: 0, halftime: 1, scheduled: 2, final: 3 };
-      const statusDiff = (statusOrder[a.status] ?? 4) - (statusOrder[b.status] ?? 4);
-      if (statusDiff !== 0) return statusDiff;
+    return Array.from(this.games.values())
+      .sort((a, b) => {
+        // Sort by: status priority, then by eventId for STABLE ordering
+        const statusOrder: Record<string, number> = { live: 0, halftime: 1, scheduled: 2, final: 3 };
+        const statusDiff = (statusOrder[a.status] ?? 4) - (statusOrder[b.status] ?? 4);
+        if (statusDiff !== 0) return statusDiff;
 
-      // Use eventId for stable ordering (prevents flashing/reordering)
-      return (a.eventId || a.id).localeCompare(b.eventId || b.id);
-    });
+        // Use eventId for stable ordering (prevents flashing/reordering)
+        return (a.eventId || a.id).localeCompare(b.eventId || b.id);
+      })
+      .map(game => {
+        // Strip internal metadata
+        const { createdAt, ...liveGame } = game;
+        return liveGame;
+      });
   }
 
   private parseTimeRemaining(time: string): number {
@@ -46,11 +57,11 @@ class GameStore {
     return minutes * 60 + seconds;
   }
 
-  getLiveGames(): GameWithMeta[] {
+  getLiveGames(): LiveGame[] {
     return this.getAllGames().filter(g => g.status === 'live' || g.status === 'halftime');
   }
 
-  getFinishedGames(): GameWithMeta[] {
+  getFinishedGames(): LiveGame[] {
     return this.getAllGames().filter(g => g.status === 'final');
   }
 
@@ -106,7 +117,7 @@ class GameStore {
   }
 
   // Add demo game for testing
-  addDemoGame(): GameWithMeta {
+  addDemoGame(): LiveGame {
     const demoId = `demo-${Date.now()}`;
     const now = new Date().toISOString();
     const demoGame: GameWithMeta = {
@@ -148,7 +159,10 @@ class GameStore {
       createdAt: now,
     };
     this.games.set(demoId, demoGame);
-    return demoGame;
+
+    // Return LiveGame (strip internal metadata)
+    const { createdAt, ...liveGame } = demoGame;
+    return liveGame;
   }
 }
 

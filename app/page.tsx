@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Folder, RefreshCw, ChevronDown, Bell, Zap } from 'lucide-react';
+import { Activity, RefreshCw, Bell, Zap, TrendingUp, TrendingDown } from 'lucide-react';
 import { LiveGame } from '@/types';
 
 interface GameWithMeta extends Omit<LiveGame, 'lastUpdate'> {
@@ -40,34 +40,19 @@ export default function LiveGamesPage() {
           setTimeout(() => setUpdatedGames(new Set()), 800);
         }
 
-        // Only update games if we got data OR if we had no games before
-        // This prevents clearing the display when serverless function returns empty
         if (newGames.length > 0 || !hasGamesRef.current) {
-          // Filter out:
-          // - Final games (should only show in Historical Games table)
-          // - Pre-live games (Q1 12:00 with 0-0 score - game hasn't actually started)
-          // - Scheduled games - only show games that have actual action
           const activeGames = newGames.filter((game) => {
-            // ALWAYS filter out final games - they belong in Historical Games
             if (game.status === 'final') return false;
-            // Filter out scheduled games
             if (game.status === 'scheduled') return false;
-            // Always show games with any score (live/halftime)
             if (game.homeScore > 0 || game.awayScore > 0) return true;
-            // Filter out Q1 12:00 games (not started)
             if (game.quarter === 1 && game.timeRemaining === '12:00') return false;
-            // Show all other games (including 0-0 games that have started)
             return true;
           });
 
-          // Sort games consistently by eventId to prevent flashing/reordering
           const sortedGames = [...activeGames].sort((a, b) => {
-            // First sort by status: live > halftime > final
             const statusOrder: Record<string, number> = { live: 0, halftime: 1, final: 2 };
             const statusDiff = (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3);
             if (statusDiff !== 0) return statusDiff;
-
-            // Then by eventId for stable ordering
             return (a.eventId || a.id).localeCompare(b.eventId || b.id);
           });
           setGames(sortedGames);
@@ -77,7 +62,6 @@ export default function LiveGamesPage() {
       }
     } catch (error) {
       console.error('Failed to fetch games:', error);
-      // Don't clear games on error - keep showing what we have
     } finally {
       setLoading(false);
     }
@@ -101,17 +85,35 @@ export default function LiveGamesPage() {
     fetchGames();
   };
 
+  // Helpers
+  const extractPlayerName = (teamStr: string) => {
+    const match = teamStr?.match(/\(([^)]+)\)/);
+    return match ? match[1] : teamStr;
+  };
+
+  const extractTeamName = (teamStr: string) => {
+    return teamStr?.replace(/\s*\([^)]+\)/, '') || teamStr;
+  };
+
   return (
-    <div className="p-6">
+    <div className="p-8 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-            <Folder className="w-5 h-5 text-orange-500" />
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-card"
+            style={{
+              background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%)',
+              border: '1px solid rgba(56, 189, 248, 0.2)'
+            }}
+          >
+            <Activity className="w-6 h-6 text-sky-500" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-slate-800">Live Games</h1>
-            <p className="text-sm text-slate-500">Real-time game tracking with strategy triggers and live odds</p>
+            <h1 className="text-3xl font-bold font-display text-gradient">Live Games</h1>
+            <p className="text-sm font-medium mt-1" style={{ color: '#718096' }}>
+              Real-time tracking with AI strategy triggers
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -126,16 +128,23 @@ export default function LiveGamesPage() {
         </div>
       </div>
 
-      {/* Games Card */}
+      {/* Main Content */}
       <div className="card">
         <div className="card-header flex items-center justify-between">
-          <span>Active Games ({games.length})</span>
+          <span className="font-semibold">Active Games ({games.length})</span>
           <div className="flex gap-2">
-            <button onClick={addDemoGame} className="text-xs text-purple-600 hover:text-purple-700 font-medium">
+            <button
+              onClick={addDemoGame}
+              className="text-xs text-sky-600 hover:text-sky-700 font-semibold transition-colors"
+            >
               + Add Demo
             </button>
-            <span className="text-slate-300">|</span>
-            <button onClick={clearFinished} className="text-xs text-slate-500 hover:text-slate-700 font-medium">
+            <span style={{ color: '#E2E8F0' }}>|</span>
+            <button
+              onClick={clearFinished}
+              className="text-xs hover:text-indigo-600 font-medium transition-colors"
+              style={{ color: '#718096' }}
+            >
               Clear Finished
             </button>
           </div>
@@ -143,173 +152,144 @@ export default function LiveGamesPage() {
 
         {loading ? (
           <div className="p-8">
-            <div className="space-y-3">
-              {[1, 2, 3].map(i => <div key={i} className="skeleton h-16 w-full" />)}
+            <div className="space-y-4">
+              {[1, 2, 3].map(i => <div key={i} className="skeleton h-24 w-full" />)}
             </div>
           </div>
         ) : games.length === 0 ? (
-          <div className="p-12 text-center">
-            <Folder className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-            <p className="text-slate-500 mb-2">No active games</p>
+          <div className="p-16 text-center">
+            <Activity className="w-16 h-16 mx-auto mb-4" style={{ color: '#E2E8F0' }} />
+            <p className="font-medium mb-3" style={{ color: '#718096' }}>No active games</p>
             <button onClick={addDemoGame} className="btn btn-primary">
               Add Demo Game
             </button>
           </div>
         ) : (
-          <table className="games-table">
-            <thead>
-              <tr>
-                <th style={{ width: '40px' }}></th>
-                <th>Player</th>
-                <th>Team</th>
-                <th style={{ width: '80px' }}>Score</th>
-                <th style={{ width: '70px' }}>Lead</th>
-                <th style={{ width: '120px' }}>Spread</th>
-                <th style={{ width: '80px' }}>ML</th>
-                <th style={{ width: '90px' }}>O/U</th>
-                <th style={{ width: '70px' }}>Quarter</th>
-                <th style={{ width: '70px' }}>Time</th>
-                <th style={{ width: '80px' }}>Status</th>
-                <th style={{ width: '40px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {games.map(game => {
-                const isUpdated = updatedGames.has(game.id);
-                const homeWinning = game.homeScore > game.awayScore;
-                const awayWinning = game.awayScore > game.homeScore;
-                const lead = Math.abs(game.homeScore - game.awayScore);
-                const hasTrigger = game.status === 'live' && lead >= 10;
+          <div className="p-6">
+            {games.map(game => {
+              const isUpdated = updatedGames.has(game.id);
+              const homeWinning = game.homeScore > game.awayScore;
+              const awayWinning = game.awayScore > game.homeScore;
+              const lead = Math.abs(game.homeScore - game.awayScore);
+              const hasTrigger = game.status === 'live' && lead >= 10;
 
-                // Extract player names from team strings like "OKC Thunder (KJMR)"
-                const extractPlayerName = (teamStr: string) => {
-                  const match = teamStr?.match(/\(([^)]+)\)/);
-                  return match ? match[1] : teamStr;
-                };
-                const awayPlayer = extractPlayerName(game.awayTeam);
-                const homePlayer = extractPlayerName(game.homeTeam);
+              const awayPlayer = extractPlayerName(game.awayTeam);
+              const homePlayer = extractPlayerName(game.homeTeam);
+              const awayTeamName = extractTeamName(game.awayTeam);
+              const homeTeamName = extractTeamName(game.homeTeam);
 
-                // Get just the team name without player
-                const extractTeamName = (teamStr: string) => {
-                  return teamStr?.replace(/\s*\([^)]+\)/, '') || teamStr;
-                };
-                const awayTeamName = extractTeamName(game.awayTeam);
-                const homeTeamName = extractTeamName(game.homeTeam);
+              const isLive = game.status === 'live';
 
-                return (
-                  <tr key={game.id} className={isUpdated ? 'game-updated' : ''}>
-                    {/* Expand */}
-                    <td>
-                      <ChevronDown className="expand-toggle w-4 h-4" />
-                    </td>
+              return (
+                <div
+                  key={game.id}
+                  className={`${isLive ? 'game-card-live' : 'game-card'} ${isUpdated ? 'game-row-flash' : ''}`}
+                >
+                  {/* Game Card Grid Layout */}
+                  <div className="grid grid-cols-12 gap-6 items-center">
 
-                    {/* Players - stacked */}
-                    <td>
-                      <div className="team-cell">
-                        <span className={`team-name ${awayWinning ? 'winning' : homeWinning ? 'losing' : ''}`}>
-                          {awayPlayer}
-                        </span>
-                        <span className={`team-name ${homeWinning ? 'winning' : awayWinning ? 'losing' : ''}`}>
-                          {homePlayer}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Teams - stacked */}
-                    <td>
-                      <div className="team-cell">
-                        <span className="team-info">{awayTeamName}</span>
-                        <span className="team-info">{homeTeamName}</span>
-                      </div>
-                    </td>
-
-                    {/* Scores - stacked */}
-                    <td>
-                      <div className="score-cell">
-                        <span className={`score-value ${isUpdated ? 'updated' : ''}`}>
-                          {game.awayScore}
-                        </span>
-                        <span className={`score-value ${isUpdated ? 'updated' : ''}`}>
-                          {game.homeScore}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Lead - always show value, even if 0 */}
-                    <td className="text-center">
-                      <span className={`lead-value ${lead === 0 ? 'lead-zero' : ''}`}>{lead}</span>
-                    </td>
-
-                    {/* Spread - stacked */}
-                    <td>
-                      <div className="line-cell">
-                        <div>
-                          <span className="line-value">
-                            {game.spread > 0 ? '+' : ''}{game.spread}
-                          </span>
-                          <span className="line-juice ml-1">(-120)</span>
-                        </div>
-                        <div>
-                          <span className="line-value">
-                            {game.spread > 0 ? '' : '+'}{-game.spread}
-                          </span>
-                          <span className="line-juice ml-1">(-120)</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Moneyline - stacked */}
-                    <td>
-                      <div className="line-cell">
-                        <div className="line-value">{game.mlAway || '–'}</div>
-                        <div className="line-value">{game.mlHome || '–'}</div>
-                      </div>
-                    </td>
-
-                    {/* Over/Under - stacked */}
-                    <td>
-                      <div className="line-cell">
-                        <div>
-                          <span className="line-value">O</span>
-                          <span className="ml-1">{game.total}</span>
-                        </div>
-                        <div>
-                          <span className="line-value">U</span>
-                          <span className="ml-1">{game.total}</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Quarter */}
-                    <td className="text-center">
-                      <span className="quarter-badge">Q{game.quarter}</span>
-                    </td>
-
-                    {/* Time */}
-                    <td className="text-center">
-                      <span className="time-display">{game.timeRemaining}</span>
-                    </td>
-
-                    {/* Status */}
-                    <td>
+                    {/* Status Badge & Quarter - Col 1-2 */}
+                    <div className="col-span-2 flex flex-col gap-2 items-center">
                       <span className={`status-badge ${game.status}`}>
                         {game.status}
                       </span>
-                    </td>
+                      <span className="quarter-badge">Q{game.quarter}</span>
+                      <span className="time-display text-xs">{game.timeRemaining}</span>
+                    </div>
 
-                    {/* Bell / Trigger */}
-                    <td>
-                      {hasTrigger ? (
-                        <Zap className="trigger-icon" />
-                      ) : (
-                        <Bell className="bell-icon w-4 h-4" />
+                    {/* Teams & Scores - Col 3-6 */}
+                    <div className="col-span-4 space-y-3">
+                      {/* Away Team */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className={`team-name ${awayWinning ? 'winning' : homeWinning ? 'losing' : ''}`}>
+                            {awayPlayer}
+                          </div>
+                          <div className="team-info">{awayTeamName}</div>
+                        </div>
+                        <div className={`score-value ${awayWinning ? 'winning' : homeWinning ? 'losing' : ''} ${isUpdated ? 'updated' : ''}`}>
+                          {game.awayScore}
+                        </div>
+                      </div>
+
+                      {/* Home Team */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className={`team-name ${homeWinning ? 'winning' : awayWinning ? 'losing' : ''}`}>
+                            {homePlayer}
+                          </div>
+                          <div className="team-info">{homeTeamName}</div>
+                        </div>
+                        <div className={`score-value ${homeWinning ? 'winning' : awayWinning ? 'losing' : ''} ${isUpdated ? 'updated' : ''}`}>
+                          {game.homeScore}
+                        </div>
+                      </div>
+
+                      {/* Lead Indicator */}
+                      {lead > 0 && (
+                        <div className="flex items-center gap-2 pt-1">
+                          {awayWinning ? <TrendingUp className="w-3 h-3 text-coral-500" /> : <TrendingDown className="w-3 h-3 text-slate-400" />}
+                          <span className={`text-xs font-semibold ${lead === 0 ? 'text-slate-400' : 'text-coral-500'}`}>
+                            Lead: {lead}
+                          </span>
+                        </div>
                       )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </div>
+
+                    {/* Betting Lines - Col 7-10 */}
+                    <div className="col-span-4 grid grid-cols-3 gap-3">
+                      {/* Spread */}
+                      <div className="flex flex-col gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#718096' }}>Spread</span>
+                        <div className="flex flex-col gap-1">
+                          <span className="odds-badge text-xs">
+                            {game.spread > 0 ? '+' : ''}{game.spread}
+                          </span>
+                          <span className="odds-badge text-xs">
+                            {game.spread > 0 ? '' : '+'}{-game.spread}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Moneyline */}
+                      <div className="flex flex-col gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#718096' }}>ML</span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`odds-badge text-xs ${(game.mlAway && game.mlAway > 0) ? 'positive' : 'negative'}`}>
+                            {game.mlAway || '–'}
+                          </span>
+                          <span className={`odds-badge text-xs ${(game.mlHome && game.mlHome > 0) ? 'positive' : 'negative'}`}>
+                            {game.mlHome || '–'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Total */}
+                      <div className="flex flex-col gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#718096' }}>O/U</span>
+                        <div className="flex flex-col gap-1">
+                          <span className="odds-badge text-xs">O {game.total}</span>
+                          <span className="odds-badge text-xs">U {game.total}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions - Col 11-12 */}
+                    <div className="col-span-2 flex flex-col items-center gap-2">
+                      {hasTrigger ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <Zap className="trigger-icon w-6 h-6" />
+                          <span className="text-xs font-bold text-amber-600">Trigger!</span>
+                        </div>
+                      ) : (
+                        <Bell className="bell-icon w-5 h-5" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

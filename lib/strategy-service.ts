@@ -156,6 +156,19 @@ export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]>
       const hasCloseTrigger = triggers.some((t) => t.entryOrClose === 'close');
       const isTwoStage = fields['Is Two Stage'] ?? (hasEntryTrigger && hasCloseTrigger);
 
+      // Validate two-stage configuration
+      if (isTwoStage && (!hasEntryTrigger || !hasCloseTrigger)) {
+        console.warn(
+          `⚠️ Strategy "${fields.Name}" is marked as two-stage but missing triggers:`,
+          `Entry: ${hasEntryTrigger ? '✓' : '✗'}, Close: ${hasCloseTrigger ? '✓' : '✗'}`
+        );
+      }
+
+      // Validate that strategy has at least one trigger if active
+      if (fields['Is Active'] && triggers.length === 0) {
+        console.warn(`⚠️ Active strategy "${fields.Name}" has no triggers configured`);
+      }
+
       return {
         id: record.id,
         name: fields.Name || 'Unnamed Strategy',

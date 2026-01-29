@@ -145,6 +145,16 @@ export function evaluateTrigger(
   const matchedConditions: Condition[] = [];
   const failedConditions: Condition[] = [];
 
+  // Warn if trigger has no conditions
+  if (trigger.conditions.length === 0) {
+    console.warn(`⚠️ Trigger "${trigger.name}" has no conditions and will never fire`);
+    return {
+      passed: false,
+      matchedConditions: [],
+      failedConditions: [],
+    };
+  }
+
   for (const condition of trigger.conditions) {
     if (evaluateCondition(condition, context)) {
       matchedConditions.push(condition);

@@ -238,7 +238,10 @@ export async function createSignal(
   try {
     const now = new Date().toISOString();
     const leadingTeam = getLeadingTeamSpread(game);
-    const isTwoStage = strategy.isTwoStage ?? (strategy.triggers.some(t => t.entryOrClose === 'close'));
+    // Check for both entry AND close triggers to determine two-stage
+    const hasEntryTrigger = strategy.triggers.some(t => t.entryOrClose === 'entry');
+    const hasCloseTrigger = strategy.triggers.some(t => t.entryOrClose === 'close');
+    const isTwoStage = strategy.isTwoStage ?? (hasEntryTrigger && hasCloseTrigger);
 
     // Determine initial status
     const initialStatus: SignalStatus = isTwoStage ? 'monitoring' : 'watching';
@@ -339,12 +342,13 @@ export async function onCloseTriggerFired(
 ): Promise<boolean> {
   const activeSignal = signalStore.getActiveSignal(strategyId, gameId);
   if (!activeSignal) {
-    console.log(`No active signal found for close trigger`);
+    console.warn(`⚠️ Close trigger fired but no active signal found for strategy ${strategyId} game ${gameId}`);
+    console.warn(`   This may indicate: (1) Entry trigger hasn't fired yet, (2) Signal already expired, or (3) Memory store was reset`);
     return false;
   }
 
   if (activeSignal.stage !== 'monitoring') {
-    console.log(`Signal not in monitoring stage, current: ${activeSignal.stage}`);
+    console.log(`ℹ️ Close trigger fired but signal not in monitoring stage (current: ${activeSignal.stage}) - skipping`);
     return false;
   }
 
@@ -412,6 +416,11 @@ export async function checkWatchingSignalsForOdds(
     }
 
     // Check if odds meet requirement
+    const actualOddsValue = getActualOddsValue(
+      game,
+      strategy.oddsRequirement,
+      activeSignal.leadingTeamAtTrigger!
+    );
     const oddsAligned = checkOddsRequirement(
       game,
       strategy.oddsRequirement,
@@ -422,6 +431,14 @@ export async function checkWatchingSignalsForOdds(
       const signal = await markBetTaken(activeSignal.strategyId, game.id, game, strategy);
       if (signal) {
         betsAvailable.push(signal);
+      }
+    } else {
+      // Log why odds didn't align (every 10th check to avoid log spam)
+      if (Math.random() < 0.1) {
+        console.log(
+          `📊 Odds check for ${strategy.name}: Actual ${strategy.oddsRequirement.type}=${actualOddsValue}, ` +
+          `Required=${strategy.oddsRequirement.value}, Aligned=${oddsAligned}`
+        );
       }
     }
   }

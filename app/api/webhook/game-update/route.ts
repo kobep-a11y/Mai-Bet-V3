@@ -218,9 +218,12 @@ async function mapN8NFields(data: Record<string, unknown>): Promise<LiveGame> {
   }
 
   // Spread from handicap field
-  if (spreadEntry) {
-    const handicap = parseFloat(String(spreadEntry.handicap || '0'));
-    if (handicap !== 0) spread = handicap;
+  if (spreadEntry && spreadEntry.handicap !== undefined && spreadEntry.handicap !== null) {
+    const handicap = parseFloat(String(spreadEntry.handicap));
+    // Accept all numeric values including 0 (pick'em lines)
+    if (!isNaN(handicap)) {
+      spread = handicap;
+    }
   }
 
   // Total from handicap field in Total Points
@@ -259,8 +262,22 @@ async function mapN8NFields(data: Record<string, unknown>): Promise<LiveGame> {
 
   // If Q4 not provided and game is in Q4 or final, calculate it
   if (q4Home === 0 && q4Away === 0 && quarter >= 4) {
-    q4Home = Math.max(0, finalHome - halftimeHome - q3Home);
-    q4Away = Math.max(0, finalAway - halftimeAway - q3Away);
+    // Calculate Q4 = Final - Halftime - Q3
+    const calculatedQ4Home = finalHome - halftimeHome - q3Home;
+    const calculatedQ4Away = finalAway - halftimeAway - q3Away;
+
+    // Validate calculation - negative values indicate data corruption
+    if (calculatedQ4Home < 0 || calculatedQ4Away < 0) {
+      console.warn(
+        `⚠️ Invalid Q4 calculation for event ${eventId}:`,
+        `Q4 Home=${calculatedQ4Home}, Q4 Away=${calculatedQ4Away}`,
+        `(Final: ${finalHome}-${finalAway}, Half: ${halftimeHome}-${halftimeAway}, Q3: ${q3Home}-${q3Away})`
+      );
+    }
+
+    // Use calculated values, clamping to 0 minimum
+    q4Home = Math.max(0, calculatedQ4Home);
+    q4Away = Math.max(0, calculatedQ4Away);
   }
 
   // Determine game status

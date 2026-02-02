@@ -256,7 +256,28 @@ Strategies are configured in Airtable. See **AIRTABLE-SCHEMA.md** for details.
 
 ---
 
+## 🤝 Team Coordination
+
+This project uses a **Universal Delegation Framework** for organizing work across specialized AI teams.
+
+**Framework Documentation:**
+- Overview: See `universal-frameworks/README.md`
+- Delegation Guide: See `universal-frameworks/MAI_BETS_DELEGATION.md`  
+- Prompt Templates: See `universal-frameworks/CHIEF_OF_STAFF_PROMPTS.md`
+
+**Teams:**
+- Backend, Database, Integration, UI, QA
+
+**How It Works:**
+1. Chief of Staff (AI coordinator) generates task prompts
+2. CEO delegates tasks to team member AI chats
+3. Teams complete work and report back
+4. Progress tracked through phases 1-8 in roadmap
+
+---
+
 ## 📄 License
 
 MIT License - Built for MAI Bets
+
 

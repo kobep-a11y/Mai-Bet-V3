@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Activity, RefreshCw, Bell, Zap, TrendingUp, TrendingDown, Wifi, WifiOff, Pause, Play } from 'lucide-react';
-import { LiveGame } from '@/types';
+import { Activity, RefreshCw, Wifi, WifiOff, Pause, Play } from 'lucide-react';
+import { LiveGame, Strategy } from '@/types';
+import { LiveGameCard } from '@/components/live-game-card';
 
 interface GameWithMeta extends Omit<LiveGame, 'lastUpdate'> {
   createdAt?: string;
@@ -24,6 +25,9 @@ export default function LiveGamesPage() {
   const [updatedGames, setUpdatedGames] = useState<Set<string>>(new Set());
   const hasGamesRef = useRef(false);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Strategy state
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
 
   const fetchGames = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -85,6 +89,22 @@ export default function LiveGamesPage() {
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
 
+  // Fetch strategies on mount
+  useEffect(() => {
+    const fetchStrategies = async () => {
+      try {
+        const res = await fetch('/api/strategies');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          setStrategies(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch strategies:', error);
+      }
+    };
+    fetchStrategies();
+  }, []);
+
   // Auto-refresh with countdown
   useEffect(() => {
     if (!autoRefresh) {
@@ -131,19 +151,6 @@ export default function LiveGamesPage() {
   const clearFinished = async () => {
     await fetch('/api/games/clear-finished', { method: 'POST' });
     fetchGames();
-  };
-
-  // Helpers
-  const extractPlayerName = (teamStr: string, fallback: string = '') => {
-    if (!teamStr) return fallback;
-    const match = teamStr.match(/\(([^)]+)\)/);
-    return match ? match[1] : (teamStr || fallback);
-  };
-
-  const extractTeamName = (teamStr: string, fallback: string = '') => {
-    if (!teamStr) return fallback;
-    const cleaned = teamStr.replace(/\s*\([^)]+\)/, '').trim();
-    return cleaned || fallback;
   };
 
   return (
@@ -249,129 +256,14 @@ export default function LiveGamesPage() {
           </div>
         ) : (
           <div className="p-6">
-            {games.map(game => {
-              const isUpdated = updatedGames.has(game.id);
-              const homeWinning = game.homeScore > game.awayScore;
-              const awayWinning = game.awayScore > game.homeScore;
-              const lead = Math.abs(game.homeScore - game.awayScore);
-              const hasTrigger = game.status === 'live' && lead >= 10;
-
-              const awayPlayer = extractPlayerName(game.awayTeam, 'Away');
-              const homePlayer = extractPlayerName(game.homeTeam, 'Home');
-              const awayTeamName = extractTeamName(game.awayTeam, 'Away Team');
-              const homeTeamName = extractTeamName(game.homeTeam, 'Home Team');
-
-              const isLive = game.status === 'live';
-
-              return (
-                <div
-                  key={game.id}
-                  className={`${isLive ? 'game-card-live' : 'game-card'} ${isUpdated ? 'game-row-flash' : ''}`}
-                >
-                  {/* Game Card Grid Layout */}
-                  <div className="grid grid-cols-12 gap-6 items-center">
-
-                    {/* Status Badge & Quarter - Col 1-2 */}
-                    <div className="col-span-2 flex flex-col gap-2 items-center">
-                      <span className={`status-badge ${game.status}`}>
-                        {game.status}
-                      </span>
-                      <span className="quarter-badge">Q{game.quarter}</span>
-                      <span className="time-display text-xs">{game.timeRemaining}</span>
-                    </div>
-
-                    {/* Teams & Scores - Col 3-6 */}
-                    <div className="col-span-4 space-y-3">
-                      {/* Away Team */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className={`team-name ${awayWinning ? 'winning' : homeWinning ? 'losing' : ''}`}>
-                            {awayPlayer}
-                          </div>
-                          <div className="team-info">{awayTeamName}</div>
-                        </div>
-                        <div className={`score-value ${awayWinning ? 'winning' : homeWinning ? 'losing' : ''} ${isUpdated ? 'updated' : ''}`}>
-                          {game.awayScore}
-                        </div>
-                      </div>
-
-                      {/* Home Team */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className={`team-name ${homeWinning ? 'winning' : awayWinning ? 'losing' : ''}`}>
-                            {homePlayer}
-                          </div>
-                          <div className="team-info">{homeTeamName}</div>
-                        </div>
-                        <div className={`score-value ${homeWinning ? 'winning' : awayWinning ? 'losing' : ''} ${isUpdated ? 'updated' : ''}`}>
-                          {game.homeScore}
-                        </div>
-                      </div>
-
-                      {/* Lead Indicator */}
-                      {lead > 0 && (
-                        <div className="flex items-center gap-2 pt-1">
-                          {awayWinning ? <TrendingUp className="w-3 h-3 text-sky-500" /> : <TrendingDown className="w-3 h-3 text-slate-400" />}
-                          <span className={`text-xs font-semibold ${lead === 0 ? 'text-slate-400' : 'text-sky-500'}`}>
-                            Lead: {lead}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Betting Lines - Col 7-10 */}
-                    <div className="col-span-4 grid grid-cols-3 gap-3">
-                      {/* Spread - Gray theme */}
-                      <div className="flex flex-col gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#718096' }}>Spread</span>
-                        <div className="flex flex-col gap-1">
-                          <span className="odds-badge spread text-xs">
-                            {game.spread > 0 ? '+' : ''}{game.spread}
-                          </span>
-                          <span className="odds-badge spread text-xs">
-                            {game.spread > 0 ? '' : '+'}{-game.spread}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Moneyline - Blue theme */}
-                      <div className="flex flex-col gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#718096' }}>ML</span>
-                        <div className="flex flex-col gap-1">
-                          <span className={`odds-badge moneyline text-xs ${(game.mlAway && game.mlAway > 0) ? 'positive' : ''}`}>
-                            {game.mlAway || '–'}
-                          </span>
-                          <span className={`odds-badge moneyline text-xs ${(game.mlHome && game.mlHome > 0) ? 'positive' : ''}`}>
-                            {game.mlHome || '–'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Total - Gray theme */}
-                      <div className="flex flex-col gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#718096' }}>O/U</span>
-                        <div className="flex flex-col gap-1">
-                          <span className="odds-badge total text-xs">O {game.total}</span>
-                          <span className="odds-badge total text-xs">U {game.total}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions - Col 11-12 */}
-                    <div className="col-span-2 flex flex-col items-center gap-2">
-                      {hasTrigger ? (
-                        <div className="flex flex-col items-center gap-1">
-                          <Zap className="trigger-icon w-6 h-6" />
-                          <span className="text-xs font-bold text-amber-600">Trigger!</span>
-                        </div>
-                      ) : (
-                        <Bell className="bell-icon w-5 h-5" />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {games.map(game => (
+              <LiveGameCard
+                key={game.id}
+                game={game}
+                strategies={strategies}
+                isUpdated={updatedGames.has(game.id)}
+              />
+            ))}
           </div>
         )}
       </div>

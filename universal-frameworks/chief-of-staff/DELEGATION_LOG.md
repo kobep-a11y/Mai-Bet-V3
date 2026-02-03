@@ -2,15 +2,126 @@
 
 **Purpose:** Track all team delegations with prompts and status.
 
+**Last Updated:** 2026-02-03 13:34
+
 ---
 
 ## Active Delegations
 
-### DEVOPS-001: Git Initialization & GitHub Sync
-**Team:** DevOps (Ad-hoc)  
-**Status:** 🟡 PENDING DELEGATION  
+### CEO-ENV-001: Create Environment Configuration
+**Team:** CEO (You)  
+**Status:** 🔴 ACTION REQUIRED  
 **Created:** 2026-02-03  
-**Priority:** P0  
+**Priority:** P0 — BLOCKING  
+**Blocks:** All other fixes
+
+**Required Actions:**
+1. Create `.env.local` file in project root with:
+```env
+AIRTABLE_API_KEY=pat...
+AIRTABLE_BASE_ID=app...
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+```
+
+2. Verify these Airtable tables exist with data:
+   - Strategies (at least 1 with `Is Active = true`)
+   - Triggers (linked to active strategies with conditions)
+   - Active Games
+   - Signals
+
+**Report back:** "ENV-001 done" when credentials are set
+
+---
+
+### BE-HYDRATE-001: Signal Store Hydration (Ready After ENV)
+**Team:** Backend  
+**Status:** 🟡 READY WHEN ENV DONE  
+**Created:** 2026-02-03  
+**Priority:** P1  
+**Depends On:** CEO-ENV-001
+
+**Prompt:**
+```markdown
+You are the Backend Team for MAI Bets V3.
+
+## Context Files to Read First
+1. `c:\Users\kobep\OneDrive\Desktop\Projects\mai-bets-v3\universal-frameworks\BACKEND_TEAM.md`
+2. `c:\Users\kobep\OneDrive\Desktop\Projects\mai-bets-v3\lib\signal-service.ts`
+
+## Your Mission
+Fix the signal store cold start issue. Currently, when the Vercel serverless function cold starts, the in-memory SignalStore is empty. Close triggers fail because they can't find matching signals.
+
+## Problem Details (from QA Diagnostic)
+- File: `lib/signal-service.ts` lines 166-218
+- The `SignalStore` is in-memory only
+- After cold start, close triggers fire but find no active signal
+- Log shows: "Close trigger fired but no active signal found for strategy..."
+
+## Requirements
+1. Implement signal store hydration from Airtable
+2. In `checkWatchingSignalsForOdds()` (line 426), query Airtable for signals with status = 'monitoring' or 'watching'
+3. Re-populate the in-memory store before evaluation
+4. Ensure this happens transparently on first webhook call after cold start
+
+## Acceptance Criteria
+- [ ] Signal store loads active signals from Airtable on cold start
+- [ ] Close triggers find matching signals after cold start
+- [ ] No duplicate signals created
+- [ ] Performance impact minimal (< 500ms added latency)
+
+## Handoff
+Report back with:
+1. Summary of implementation
+2. Files modified
+3. How to test the fix
+```
+
+---
+
+### DB-FIELD-001: Fix Airtable Field Name (Ready After ENV)
+**Team:** Database  
+**Status:** 🟡 READY WHEN ENV DONE  
+**Created:** 2026-02-03  
+**Priority:** P2  
+**Depends On:** CEO-ENV-001
+
+**Prompt:**
+```markdown
+You are the Database Team for MAI Bets V3.
+
+## Context Files to Read First
+1. `c:\Users\kobep\OneDrive\Desktop\Projects\mai-bets-v3\universal-frameworks\DATABASE_TEAM.md`
+2. `c:\Users\kobep\OneDrive\Desktop\Projects\mai-bets-v3\AIRTABLE-SCHEMA.md`
+3. `c:\Users\kobep\OneDrive\Desktop\Projects\mai-bets-v3\lib\game-service.ts`
+
+## Your Mission
+Fix the Airtable field name mismatch. The "Away Team " field has a trailing space which could cause silent data save failures.
+
+## Problem Details (from QA Diagnostic)
+- File: `lib/game-service.ts` lines 122-126
+- The field is named "Away Team " (with trailing space)
+- Code works with this but it's fragile
+
+## Options
+1. **Option A (Recommended):** Rename field in Airtable UI to "Away Team" (no space)
+   - Then update `game-service.ts` to use `Away Team` without trailing space
+   
+2. **Option B:** Keep Airtable as-is, add comments explaining the quirk
+
+## Verification
+1. Go to Airtable "Active Games" table
+2. Check exact field name for away team
+3. If it has trailing space, rename it
+4. Update code to match
+
+## Handoff
+Report back with:
+1. Current Airtable field name (exactly as shown)
+2. Action taken (renamed or kept)
+3. Any code changes needed
+```
+
+---
 
 **Prompt:**
 ```markdown

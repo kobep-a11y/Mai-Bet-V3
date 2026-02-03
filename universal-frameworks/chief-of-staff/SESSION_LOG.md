@@ -50,8 +50,22 @@
 - ISSUE-005 → Already fixed if .env.local has DISCORD_WEBHOOK_URL
 
 ### Pending Decisions
-- Does CEO have Airtable credentials ready?
-- Does CEO have Discord webhook URL ready?
+- ~~Does CEO have Airtable credentials ready?~~ ✅ Provided
+- ~~Does CEO have Discord webhook URL ready?~~ ✅ Provided
+
+### Wave 2 Results (2026-02-03 14:10)
+
+| Task ID | Team | Description | Status |
+|---------|------|-------------|--------|
+| INT-ENV-001 | Integration | Create .env.local | ✅ COMPLETE |
+| BE-HYDRATE-001 | Backend | Signal store hydration | ✅ COMPLETE |
+| DB-FIELD-001 | Database | Fix "Away Team " field | ✅ COMPLETE |
+
+**Action Required:** Rename Airtable field "Away Team " → "Away Team" (remove trailing space)
+
+### Wave 3 Plan (Next)
+- QA-VERIFY-001 → Run build, test locally, verify end-to-end
+- Commit and push all changes to GitHub
 
 ---
 

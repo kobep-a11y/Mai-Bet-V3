@@ -118,11 +118,10 @@ export async function upsertGame(game: LiveGame): Promise<void> {
       gameData['Home Team'] = existingFields['Home Team'];
     }
 
-    // Note: Airtable field has trailing space: "Away Team "
     if (game.awayTeam) {
-      gameData['Away Team '] = game.awayTeam;
-    } else if (existingFields['Away Team ']) {
-      gameData['Away Team '] = existingFields['Away Team '];
+      gameData['Away Team'] = game.awayTeam;
+    } else if (existingFields['Away Team']) {
+      gameData['Away Team'] = existingFields['Away Team'];
     }
 
     if (game.league) {
@@ -193,7 +192,7 @@ export async function getActiveGames(): Promise<LiveGame[]> {
         id: String(fields['Event ID'] || ''),
         eventId: String(fields['Event ID'] || ''),
         homeTeam: String(fields['Home Team'] || ''),
-        awayTeam: String(fields['Away Team '] || fields['Away Team'] || ''),
+        awayTeam: String(fields['Away Team'] || ''),
         homeScore: Number(fields['Home Score'] || 0),
         awayScore: Number(fields['Away Score'] || 0),
         quarter: Number(fields['Quarter'] || 1),
@@ -249,7 +248,7 @@ export async function getGame(eventId: string): Promise<LiveGame | null> {
       id: String(fields['Event ID'] || ''),
       eventId: String(fields['Event ID'] || ''),
       homeTeam: String(fields['Home Team'] || ''),
-      awayTeam: String(fields['Away Team '] || fields['Away Team'] || ''),
+      awayTeam: String(fields['Away Team'] || ''),
       homeScore: Number(fields['Home Score'] || 0),
       awayScore: Number(fields['Away Score'] || 0),
       quarter: Number(fields['Quarter'] || 1),

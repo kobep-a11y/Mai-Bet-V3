@@ -163,14 +163,141 @@ function checkOddsRequirement(
 }
 
 // In-memory store for active signals
+// Includes hydration from Airtable to handle Vercel serverless cold starts
 class SignalStore {
   private activeSignals: Map<string, ActiveSignal> = new Map();
+  private isHydrated: boolean = false;
+  private hydrationPromise: Promise<void> | null = null;
 
   private getKey(strategyId: string, gameId: string): string {
     return `${strategyId}-${gameId}`;
   }
 
+  /**
+   * Ensure the signal store is hydrated from Airtable before performing operations.
+   * This handles Vercel serverless cold starts where the in-memory store is empty.
+   * Safe to call multiple times - will only hydrate once.
+   */
+  async ensureHydrated(): Promise<void> {
+    if (this.isHydrated) return;
+    if (this.hydrationPromise) return this.hydrationPromise;
+
+    this.hydrationPromise = this.hydrateFromAirtable();
+    await this.hydrationPromise;
+  }
+
+  /**
+   * Hydrate the in-memory store from Airtable.
+   * Queries for signals with status = 'monitoring' or 'watching'.
+   */
+  private async hydrateFromAirtable(): Promise<void> {
+    if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+      console.log('⚠️ Signal store hydration skipped: Missing Airtable credentials');
+      this.isHydrated = true;
+      return;
+    }
+
+    try {
+      console.log('🔄 Hydrating signal store from Airtable...');
+
+      // Query for active signals (monitoring or watching status)
+      const params = new URLSearchParams();
+      params.append('filterByFormula', `OR({Status}='monitoring',{Status}='watching')`);
+
+      const response = await airtableRequest(`?${params.toString()}`);
+
+      if (!response.ok) {
+        console.error('❌ Failed to hydrate signal store:', response.status, response.statusText);
+        this.isHydrated = true;
+        return;
+      }
+
+      const data = await response.json();
+      const records = data.records || [];
+
+      let hydratedCount = 0;
+      for (const record of records) {
+        const fields = record.fields as AirtableSignalFields;
+        const strategyId = Array.isArray(fields.Strategy) ? fields.Strategy[0] : '';
+        const gameId = fields['Game ID'] || '';
+
+        if (!strategyId || !gameId) {
+          console.log(`⚠️ Skipping signal ${record.id}: missing strategyId or gameId`);
+          continue;
+        }
+
+        // Skip if already in store (shouldn't happen, but safety check)
+        if (this.hasActiveSignalSync(strategyId, gameId)) {
+          continue;
+        }
+
+        // Determine stage from status
+        const status = fields.Status || 'monitoring';
+        const stage: 'monitoring' | 'watching' = status === 'watching' ? 'watching' : 'monitoring';
+
+        // Parse trigger snapshots if available
+        let triggerSnapshots: TriggerSnapshot[] = [];
+        if (fields['Trigger History']) {
+          try {
+            const history = JSON.parse(fields['Trigger History']) as TriggerHistoryEntry[];
+            triggerSnapshots = history.map(h => h.snapshot);
+          } catch {
+            // Ignore parse errors
+          }
+        }
+
+        // Create ActiveSignal from Airtable record
+        const activeSignal: ActiveSignal = {
+          signalId: record.id,
+          strategyId,
+          gameId,
+          triggeredAt: fields['Entry Trigger Time'] || fields['Entry Time'] || new Date().toISOString(),
+          awaitingClose: stage === 'monitoring',
+          stage,
+          entryTriggerFired: true,
+          closeTriggerFired: stage === 'watching',
+          leadingTeamAtTrigger: fields['Leading Team At Trigger'],
+          requiredSpread: fields['Required Spread'],
+          oddsCheckStartTime: stage === 'watching' ? (fields['Close Trigger Time'] || fields['Entry Time']) : undefined,
+          triggerSnapshots,
+          lastTriggerSnapshot: triggerSnapshots.length > 0 ? triggerSnapshots[triggerSnapshots.length - 1] : undefined,
+        };
+
+        this.addActiveSignal(activeSignal);
+        hydratedCount++;
+      }
+
+      this.isHydrated = true;
+      console.log(`✅ Signal store hydrated: ${hydratedCount} active signals loaded from Airtable`);
+    } catch (error) {
+      console.error('❌ Error hydrating signal store:', error);
+      this.isHydrated = true; // Mark as hydrated to prevent retry loops
+    }
+  }
+
+  /**
+   * Synchronous version of hasActiveSignal for internal use.
+   * Does NOT ensure hydration - use hasActiveSignalAsync for external calls.
+   */
+  private hasActiveSignalSync(strategyId: string, gameId: string): boolean {
+    return this.activeSignals.has(this.getKey(strategyId, gameId));
+  }
+
+  /**
+   * Check if an active signal exists.
+   * WARNING: This is synchronous and may miss signals after cold start.
+   * Use hasActiveSignalAsync when hydration is needed.
+   */
   hasActiveSignal(strategyId: string, gameId: string): boolean {
+    return this.activeSignals.has(this.getKey(strategyId, gameId));
+  }
+
+  /**
+   * Async version that ensures hydration before checking.
+   * Use this for close trigger lookups to handle cold starts.
+   */
+  async hasActiveSignalAsync(strategyId: string, gameId: string): Promise<boolean> {
+    await this.ensureHydrated();
     return this.activeSignals.has(this.getKey(strategyId, gameId));
   }
 
@@ -179,7 +306,21 @@ class SignalStore {
     this.activeSignals.set(key, signal);
   }
 
+  /**
+   * Get an active signal.
+   * WARNING: This is synchronous and may return undefined after cold start.
+   * Use getActiveSignalAsync when hydration is needed.
+   */
   getActiveSignal(strategyId: string, gameId: string): ActiveSignal | undefined {
+    return this.activeSignals.get(this.getKey(strategyId, gameId));
+  }
+
+  /**
+   * Async version that ensures hydration before lookup.
+   * Use this for close trigger lookups to handle cold starts.
+   */
+  async getActiveSignalAsync(strategyId: string, gameId: string): Promise<ActiveSignal | undefined> {
+    await this.ensureHydrated();
     return this.activeSignals.get(this.getKey(strategyId, gameId));
   }
 
@@ -198,7 +339,23 @@ class SignalStore {
     return Array.from(this.activeSignals.values());
   }
 
+  /**
+   * Async version that ensures hydration before returning signals.
+   */
+  async getAllActiveSignalsAsync(): Promise<ActiveSignal[]> {
+    await this.ensureHydrated();
+    return Array.from(this.activeSignals.values());
+  }
+
   getActiveSignalsForGame(gameId: string): ActiveSignal[] {
+    return this.getAllActiveSignals().filter((s) => s.gameId === gameId);
+  }
+
+  /**
+   * Async version that ensures hydration before returning signals.
+   */
+  async getActiveSignalsForGameAsync(gameId: string): Promise<ActiveSignal[]> {
+    await this.ensureHydrated();
     return this.getAllActiveSignals().filter((s) => s.gameId === gameId);
   }
 
@@ -212,6 +369,22 @@ class SignalStore {
         this.activeSignals.delete(key);
       }
     }
+  }
+
+  /**
+   * Check if the store has been hydrated.
+   * Useful for debugging and testing.
+   */
+  isStoreHydrated(): boolean {
+    return this.isHydrated;
+  }
+
+  /**
+   * Get the count of active signals.
+   * Useful for debugging.
+   */
+  getSignalCount(): number {
+    return this.activeSignals.size;
   }
 }
 
@@ -364,10 +537,11 @@ export async function onCloseTriggerFired(
   game: LiveGame,
   trigger?: { id: string; name: string }
 ): Promise<boolean> {
-  const activeSignal = signalStore.getActiveSignal(strategyId, gameId);
+  // Use async version to ensure hydration before lookup (fixes cold start issue)
+  const activeSignal = await signalStore.getActiveSignalAsync(strategyId, gameId);
   if (!activeSignal) {
     console.warn(`⚠️ Close trigger fired but no active signal found for strategy ${strategyId} game ${gameId}`);
-    console.warn(`   This may indicate: (1) Entry trigger hasn't fired yet, (2) Signal already expired, or (3) Memory store was reset`);
+    console.warn(`   This may indicate: (1) Entry trigger hasn't fired yet, (2) Signal already expired, or (3) Signal not in Airtable`);
     return false;
   }
 
@@ -431,7 +605,9 @@ export async function checkWatchingSignalsForOdds(
   game: LiveGame,
   strategies: Strategy[]
 ): Promise<Signal[]> {
-  const watchingSignals = signalStore.getActiveSignalsForGame(game.id).filter(
+  // Use async version to ensure hydration before lookup (fixes cold start issue)
+  const allSignalsForGame = await signalStore.getActiveSignalsForGameAsync(game.id);
+  const watchingSignals = allSignalsForGame.filter(
     (s) => s.stage === 'watching'
   );
 
@@ -736,12 +912,12 @@ export async function getAllSignals(): Promise<Signal[]> {
         // Parse trigger history from JSON string
         triggerHistory: fields['Trigger History']
           ? (() => {
-              try {
-                return JSON.parse(fields['Trigger History']);
-              } catch {
-                return undefined;
-              }
-            })()
+            try {
+              return JSON.parse(fields['Trigger History']);
+            } catch {
+              return undefined;
+            }
+          })()
           : undefined,
       };
     });

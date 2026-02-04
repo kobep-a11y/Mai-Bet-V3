@@ -13,7 +13,8 @@
     "test:coverage": "jest --coverage",
     "type-check": "tsc --noEmit",
     "quality-check": "npm run type-check && npm run lint",
-    "verify": "npm run type-check && npm run lint && npm run build"
+    "verify": "npm run type-check && npm run lint && npm run build",
+    "debug:trigger": "tsx scripts/debug-trigger-trace.ts"
   },
   "dependencies": {
     "airtable": "^0.11.6",
@@ -26,6 +27,7 @@
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "tsx": "^4.7.0",
     "@types/jest": "^29.5.11",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.46",

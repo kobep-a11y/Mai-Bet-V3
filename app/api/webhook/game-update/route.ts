@@ -402,8 +402,14 @@ async function mapN8NFields(data: Record<string, unknown>): Promise<LiveGame> {
   const q3Home = Number(getField(data, 'Quarter 3 Home', 'Q3 Home', 'q3_home') || 0);
   const q3Away = Number(getField(data, 'Quarter 3 Away', 'Q3 Away', 'q3_away') || 0);
 
-  const halftimeHome = Number(getField(data, 'Halftime Score Home', 'Halftime Home') || 0);
-  const halftimeAway = Number(getField(data, 'Halftime Score Away', 'Halftime Away') || 0);
+  let halftimeHome = Number(getField(data, 'Halftime Score Home', 'Halftime Home') || 0);
+  let halftimeAway = Number(getField(data, 'Halftime Score Away', 'Halftime Away') || 0);
+
+  // Fallback: Calculate halftime from Q1+Q2 if not provided directly and game is past halftime
+  if (halftimeHome === 0 && halftimeAway === 0 && quarter >= 3) {
+    halftimeHome = q1Home + q2Home;
+    halftimeAway = q1Away + q2Away;
+  }
 
   // Get final scores for Q4 calculation
   const finalHome = Number(getField(data, 'Final Home', 'final_home') || homeScore);

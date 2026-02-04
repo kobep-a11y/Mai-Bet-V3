@@ -79,6 +79,11 @@ export async function upsertGame(game: LiveGame): Promise<void> {
       'Status': game.status,
       'Last Update': new Date().toISOString(),
       'Raw Data': JSON.stringify(game.rawData || {}),
+      // Quarter scores - store as JSON for flexibility
+      'Quarter Scores': JSON.stringify(game.quarterScores || {}),
+      // Halftime scores - critical for Blowout Protection strategies
+      'Halftime Home': game.halftimeScores?.home || 0,
+      'Halftime Away': game.halftimeScores?.away || 0,
     };
 
     // Preserve odds: only update if new values are provided (not null/defaults)
@@ -188,6 +193,33 @@ export async function getActiveGames(): Promise<LiveGame[]> {
 
     return records.map((record) => {
       const fields = record.fields;
+
+      // Parse quarter scores from JSON, with fallback to defaults
+      let quarterScores = { q1Home: 0, q1Away: 0, q2Home: 0, q2Away: 0, q3Home: 0, q3Away: 0, q4Home: 0, q4Away: 0 };
+      if (fields['Quarter Scores']) {
+        try {
+          const parsed = JSON.parse(String(fields['Quarter Scores']));
+          quarterScores = { ...quarterScores, ...parsed };
+        } catch {
+          // Keep defaults on parse error
+        }
+      }
+
+      // Parse halftime scores from dedicated fields
+      const halftimeHome = Number(fields['Halftime Home'] || 0);
+      const halftimeAway = Number(fields['Halftime Away'] || 0);
+
+      // Fallback: Calculate halftime from Q1+Q2 if game is in second half and halftime is 0
+      const quarter = Number(fields['Quarter'] || 1);
+      let halftimeScores = { home: halftimeHome, away: halftimeAway };
+      if (halftimeHome === 0 && halftimeAway === 0 && quarter >= 3) {
+        // Calculate from quarter scores if available
+        halftimeScores = {
+          home: quarterScores.q1Home + quarterScores.q2Home,
+          away: quarterScores.q1Away + quarterScores.q2Away,
+        };
+      }
+
       return {
         id: String(fields['Event ID'] || ''),
         eventId: String(fields['Event ID'] || ''),
@@ -195,7 +227,7 @@ export async function getActiveGames(): Promise<LiveGame[]> {
         awayTeam: String(fields['Away Team'] || ''),
         homeScore: Number(fields['Home Score'] || 0),
         awayScore: Number(fields['Away Score'] || 0),
-        quarter: Number(fields['Quarter'] || 1),
+        quarter,
         timeRemaining: String(fields['Time Remaining'] || '12:00'),
         status: (fields['Status'] as LiveGame['status']) || 'live',
         spread: Number(fields['Spread'] || 0),
@@ -205,8 +237,8 @@ export async function getActiveGames(): Promise<LiveGame[]> {
         league: String(fields['League'] || 'NBA2K'),
         homeTeamId: '',
         awayTeamId: '',
-        quarterScores: { q1Home: 0, q1Away: 0, q2Home: 0, q2Away: 0, q3Home: 0, q3Away: 0, q4Home: 0, q4Away: 0 },
-        halftimeScores: { home: 0, away: 0 },
+        quarterScores,
+        halftimeScores,
         finalScores: { home: Number(fields['Home Score'] || 0), away: Number(fields['Away Score'] || 0) },
         lastUpdate: String(fields['Last Update'] || new Date().toISOString()),
       };
@@ -244,6 +276,33 @@ export async function getGame(eventId: string): Promise<LiveGame | null> {
     if (records.length === 0) return null;
 
     const fields = records[0].fields;
+
+    // Parse quarter scores from JSON, with fallback to defaults
+    let quarterScores = { q1Home: 0, q1Away: 0, q2Home: 0, q2Away: 0, q3Home: 0, q3Away: 0, q4Home: 0, q4Away: 0 };
+    if (fields['Quarter Scores']) {
+      try {
+        const parsed = JSON.parse(String(fields['Quarter Scores']));
+        quarterScores = { ...quarterScores, ...parsed };
+      } catch {
+        // Keep defaults on parse error
+      }
+    }
+
+    // Parse halftime scores from dedicated fields
+    const halftimeHome = Number(fields['Halftime Home'] || 0);
+    const halftimeAway = Number(fields['Halftime Away'] || 0);
+
+    // Fallback: Calculate halftime from Q1+Q2 if game is in second half and halftime is 0
+    const quarter = Number(fields['Quarter'] || 1);
+    let halftimeScores = { home: halftimeHome, away: halftimeAway };
+    if (halftimeHome === 0 && halftimeAway === 0 && quarter >= 3) {
+      // Calculate from quarter scores if available
+      halftimeScores = {
+        home: quarterScores.q1Home + quarterScores.q2Home,
+        away: quarterScores.q1Away + quarterScores.q2Away,
+      };
+    }
+
     const game: LiveGame = {
       id: String(fields['Event ID'] || ''),
       eventId: String(fields['Event ID'] || ''),
@@ -251,7 +310,7 @@ export async function getGame(eventId: string): Promise<LiveGame | null> {
       awayTeam: String(fields['Away Team'] || ''),
       homeScore: Number(fields['Home Score'] || 0),
       awayScore: Number(fields['Away Score'] || 0),
-      quarter: Number(fields['Quarter'] || 1),
+      quarter,
       timeRemaining: String(fields['Time Remaining'] || '12:00'),
       status: (fields['Status'] as LiveGame['status']) || 'live',
       spread: Number(fields['Spread'] || 0),
@@ -261,8 +320,8 @@ export async function getGame(eventId: string): Promise<LiveGame | null> {
       league: String(fields['League'] || 'NBA2K'),
       homeTeamId: '',
       awayTeamId: '',
-      quarterScores: { q1Home: 0, q1Away: 0, q2Home: 0, q2Away: 0, q3Home: 0, q3Away: 0, q4Home: 0, q4Away: 0 },
-      halftimeScores: { home: 0, away: 0 },
+      quarterScores,
+      halftimeScores,
       finalScores: { home: Number(fields['Home Score'] || 0), away: Number(fields['Away Score'] || 0) },
       lastUpdate: String(fields['Last Update'] || new Date().toISOString()),
     };

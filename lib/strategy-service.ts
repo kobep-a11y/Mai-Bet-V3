@@ -101,6 +101,14 @@ async function fetchTriggers(): Promise<Map<string, StrategyTrigger[]>> {
  * Fetches all strategies with their triggers from Airtable using REST API
  */
 export async function fetchStrategies(forceRefresh = false): Promise<Strategy[]> {
+  // Diagnostic logging for production debugging
+  console.log('🔍 Strategy fetch starting...', {
+    hasApiKey: !!AIRTABLE_API_KEY,
+    hasBaseId: !!AIRTABLE_BASE_ID,
+    keyPrefix: AIRTABLE_API_KEY ? AIRTABLE_API_KEY.substring(0, 7) + '...' : 'MISSING',
+    basePrefix: AIRTABLE_BASE_ID ? AIRTABLE_BASE_ID.substring(0, 7) + '...' : 'MISSING',
+  });
+
   // Return cached data if valid
   if (!forceRefresh && strategiesCache && Date.now() < cacheExpiry) {
     return strategiesCache;
